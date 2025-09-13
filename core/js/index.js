@@ -1351,7 +1351,26 @@ if (btn) btn.addEventListener("click",event=>{
     } else {
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
+      
+      // Save current timeout settings and set unlimited timeouts for screenshot
+      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
+      let originalTimeouts = {
+        timeoutNormal: commsLib.timeoutNormal,
+        timeoutNewline: commsLib.timeoutNewline,
+        timeoutMax: commsLib.timeoutMax
+      };
+      
+      // Set unlimited timeouts for screenshot (very high values)
+      commsLib.timeoutNormal = 300000; // 5 minutes
+      commsLib.timeoutNewline = 600000; // 10 minutes
+      commsLib.timeoutMax = 600000; // 10 minutes
+      
       Comms.write("\x10g.dump(0, 0, 480, 320);\n").then((s)=>{
+        // Restore original timeout settings
+        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+        commsLib.timeoutMax = originalTimeouts.timeoutMax;
+        
         let oImage = new Image();
         oImage.onload = function(){
           Progress.show({title:"Converting screenshot",percent:90,sticky:true});
@@ -1387,6 +1406,11 @@ if (btn) btn.addEventListener("click",event=>{
         Progress.show({title:"Screenshot done",percent:85,sticky:true});
 
       }, err=>{
+        // Restore original timeout settings in case of error
+        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+        commsLib.timeoutMax = originalTimeouts.timeoutMax;
+        
         showToast("Error creating screenshot: "+err,"error");
       });
     }
