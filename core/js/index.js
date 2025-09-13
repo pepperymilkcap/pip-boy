@@ -1351,7 +1351,10 @@ if (btn) btn.addEventListener("click",event=>{
     } else {
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
-      Comms.write("\x10g.dump(0, 0, 480, 320);\n").then((s)=>{
+      // Get screen dimensions from device info
+      let width = device.info?.g?.width || 176;  // Default to BANGLEJS2 dimensions
+      let height = device.info?.g?.height || 176;
+      Comms.write(`\x10g.dump(0, 0, ${width}, ${height});\n`).then((s)=>{
         let oImage = new Image();
         oImage.onload = function(){
           Progress.show({title:"Converting screenshot",percent:90,sticky:true});
