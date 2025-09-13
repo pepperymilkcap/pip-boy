@@ -1351,7 +1351,7 @@ if (btn) btn.addEventListener("click",event=>{
     } else {
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
-      Comms.write("\x10g.dump();\n").then((s)=>{
+      Comms.write("\x10g.dump(0, 0, 480, 320);\n").then((s)=>{
         let oImage = new Image();
         oImage.onload = function(){
           Progress.show({title:"Converting screenshot",percent:90,sticky:true});
