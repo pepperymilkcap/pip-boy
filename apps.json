@@ -1,0 +1,139 @@
+[
+  {
+    "id": "asteroid",
+    "name": "Asteroids",
+    "version": "0.02",
+    "description": "An Asteroids Game",
+    "icon": "app.png",
+    "tags": "game",
+    "type": "app",
+    "readme": "README.md",
+    "storage": [
+      { "name": "USER/asteroid.js", "url": "app.js" }
+    ]
+  },
+  {
+    "id": "sysnav",
+    "name": "System Navigator",
+    "version": "0.02",
+    "description": "View and navigate the Pip-Boy's file system",
+    "icon": "app.png",
+    "tags": "",
+    "type": "app",
+    "readme": "README.md",
+    "storage": [
+      { "name": "USER/sysnav.js", "url": "app.js" }
+    ]
+  },
+  {
+    "id": "customalarm",
+    "name": "Custom Alarm",
+    "version": "0.01",
+    "description": "Upload a custom audio file for the alarm",
+    "icon": "app.png",
+    "tags": "",
+    "type": "map",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "storage": [
+      { "name": "ALARM/CUSTOM.WAV" }
+    ]
+  },
+  {
+    "id": "fileexp",
+    "name": "File Explorer",
+    "version": "0.1",
+    "description": "A file explorer for the Pip Boy",
+    "icon": "app.png",
+    "type": "app",
+    "tags": "",
+    "storage": [
+      { "name": "fileexp.app.js", "url": "app.js" }
+    ]
+  },
+  {
+    "id": "customimg",
+    "name": "Custom Image",
+    "version": "0.01",
+    "description": "Upload a custom image",
+    "icon": "app.png",
+    "tags": "",
+    "type": "app",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "storage": [
+      { "name": "USER/customimg.js", "url": "app.js" },
+      { "name": "USER/customimg.img" }
+    ]
+  },
+  {
+    "id": "custommap",
+    "name": "Custom Map",
+    "version": "0.01",
+    "description": "Upload a custom image to use as a map to your Pip-Boy",
+    "icon": "app.png",
+    "tags": "",
+    "type": "map",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "storage": [
+      { "name": "MAP/MAP.img" }
+    ]
+  },
+  {
+    "id": "idcard",
+    "name": "ID Card",
+    "version": "0.01",
+    "description": "Create a customised ID card",
+    "icon": "app.png",
+    "tags": "",
+    "type": "app",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "storage": [
+      { "name": "USER/idcard.js", "url": "app.js" },
+      { "name": "USER/idcard.img" }
+    ]
+  },
+  {
+    "id": "wavplayer",
+    "name": "Wave Player",
+    "version": "0.01",
+    "description": "Plays WAV Files",
+    "icon": "app.png",
+    "tags": "audio",
+    "type": "app",
+    "readme": "README.md",
+    "storage": [
+      { "name": "USER/wavplayer.js", "url": "app.js" }
+    ]
+  },
+  {
+    "id": "settings",
+    "name": "Settings",
+    "version": "0.01",
+    "description": "Allows you to tweak settings on your Pip-boy",
+    "icon": "app.png",
+    "tags": "",
+    "type": "RAM",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "customConnect": true,
+    "storage": []
+  },
+  {
+    "id": "text",
+    "name": "Custom Text",
+    "version": "0.01",
+    "description": "Upload some customised text to your Pip-boy",
+    "icon": "app.png",
+    "tags": "",
+    "type": "app",
+    "readme": "README.md",
+    "custom": "custom.html",
+    "storage": [
+      { "name": "USER/text.js", "url": "app.js" },
+      { "name": "USER/text.txt" }
+    ]
+  }
+]
