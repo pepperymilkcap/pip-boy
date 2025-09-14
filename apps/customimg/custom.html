@@ -11,22 +11,7 @@
     <p>Upload an image (400x300px):</p>
     <p><input class="form-input" id="customfile" type="file"></p>
     
-    <p>Mode:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    <label class="form-radio">
-      <input type="radio" name="colorMode" value="2bitbw" checked onchange="updateColorControlsVisibility()">
-      <i class="form-icon"></i> Monochrome
-    </label>
-    <label class="form-radio">
-      <input type="radio" name="colorMode" value="2bitcolor" onchange="updateColorControlsVisibility()">
-      <i class="form-icon"></i> Color
-    </label></p>
-    
-    <div id="colorControls" style="display:none;">
-      <p>Hue:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-      <input class="slider" type="range" id="hue" min="-180" max="180" value="0" onchange="imageLoaded ? drawPreview() : updateColorControlsVisibility()"></input><span id="huev"></span></p>
-      <p>Saturation:&nbsp;&nbsp;
-      <input class="slider" type="range" id="saturation" min="-100" max="100" value="0" onchange="imageLoaded ? drawPreview() : updateColorControlsVisibility()"></input><span id="saturationv"></span></p>
-    </div>
+
     
     <p>Brightness:&nbsp;
     <input class="slider" type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded ? drawPreview() : (document.getElementById('brightnessv').innerText = this.value)"></input><span id="brightnessv">0</span></p>
@@ -46,78 +31,6 @@
       var customImage = undefined;
       var imageLoaded = false;
 
-      // HSV color adjustment functions
-      function rgbToHsv(r, g, b) {
-        r /= 255; g /= 255; b /= 255;
-        var max = Math.max(r, g, b), min = Math.min(r, g, b);
-        var h, s, v = max;
-        var d = max - min;
-        s = max == 0 ? 0 : d / max;
-        if (max == min) {
-          h = 0;
-        } else {
-          switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-          }
-          h /= 6;
-        }
-        return [h * 360, s * 100, v * 100];
-      }
-
-      function hsvToRgb(h, s, v) {
-        h /= 360; s /= 100; v /= 100;
-        var r, g, b;
-        var i = Math.floor(h * 6);
-        var f = h * 6 - i;
-        var p = v * (1 - s);
-        var q = v * (1 - f * s);
-        var t = v * (1 - (1 - f) * s);
-        switch (i % 6) {
-          case 0: r = v, g = t, b = p; break;
-          case 1: r = q, g = v, b = p; break;
-          case 2: r = p, g = v, b = t; break;
-          case 3: r = p, g = q, b = v; break;
-          case 4: r = t, g = p, b = v; break;
-          case 5: r = v, g = p, b = q; break;
-        }
-        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-      }
-
-      function adjustHueSaturation(imageData, hueShift, saturationShift) {
-        var data = imageData.data;
-        for (var i = 0; i < data.length; i += 4) {
-          if (data[i + 3] > 0) { // only process non-transparent pixels
-            var hsv = rgbToHsv(data[i], data[i + 1], data[i + 2]);
-            hsv[0] = (hsv[0] + hueShift + 360) % 360; // hue
-            hsv[1] = Math.max(0, Math.min(100, hsv[1] + saturationShift)); // saturation
-            var rgb = hsvToRgb(hsv[0], hsv[1], hsv[2]);
-            data[i] = rgb[0];     // red
-            data[i + 1] = rgb[1]; // green
-            data[i + 2] = rgb[2]; // blue
-          }
-        }
-      }
-
-      function updateColorControlsVisibility() {
-        var colorMode = document.querySelector('input[name="colorMode"]:checked').value;
-        var isColorMode = colorMode === "2bitcolor";
-        document.getElementById("colorControls").style.display = isColorMode ? "block" : "none";
-        
-        // Update value displays
-        if (isColorMode) {
-          var hueValue = 0|document.getElementById("hue").value;
-          document.getElementById("huev").innerText = hueValue + "°";
-          var saturationValue = 0|document.getElementById("saturation").value;
-          document.getElementById("saturationv").innerText = saturationValue + "%";
-        }
-        
-        if (imageLoaded) {
-          drawPreview();
-        }
-      }
-
       function drawPreview() {
         if (!imageLoaded) return;
         var img = document.getElementById("customimage");
@@ -131,15 +44,8 @@
         // todo: maintain aspect?
         ctx.drawImage(img, 0, 0, imgW, imgH, 0, 0, IMGW, IMGH);
         
-        // Get the selected color mode
-        var colorMode = document.querySelector('input[name="colorMode"]:checked').value;
-        var isColorMode = colorMode === "2bitcolor";
-        
-        // Show/hide color controls based on mode
-        document.getElementById("colorControls").style.display = isColorMode ? "block" : "none";
-        
         var options = {
-          mode: colorMode,
+          mode: "2bitbw",
           output:"raw",
           transparent:false,
           compression:false,
@@ -152,19 +58,6 @@
         document.getElementById("contrastv").innerText = options.contrast;
         
         let imageData = ctx.getImageData(0, 0, IMGW, IMGH);
-        
-        // Apply color adjustments if in color mode
-        if (isColorMode) {
-          var hueShift = 0|document.getElementById("hue").value;
-          document.getElementById("huev").innerText = hueShift + "°";
-          var saturationShift = 0|document.getElementById("saturation").value;
-          document.getElementById("saturationv").innerText = saturationShift + "%";
-          
-          if (hueShift !== 0 || saturationShift !== 0) {
-            adjustHueSaturation(imageData, hueShift, saturationShift);
-          }
-        }
-        
         let rgba = imageData.data;
         options.rgbaOut = rgba;
         options.width = IMGW;
@@ -174,19 +67,10 @@
         var i = 0;
         for (var y=0;y<IMGH;y++) {
           for (var x=0;x<IMGW;x++) { 
-            if (!isColorMode) {
-              // Greenify and add scanlines for monochrome mode to give an accurate-ish view
-              rgba[i+0] = 0; // r
-              if (y&1) rgba[i+1] = rgba[i+1]*2 / 3;
-              rgba[i+2] = 0; // b
-            } else {
-              // For color mode, just add subtle scanlines without changing colors
-              if (y&1) {
-                rgba[i+0] = rgba[i+0]*0.85; // r
-                rgba[i+1] = rgba[i+1]*0.85; // g  
-                rgba[i+2] = rgba[i+2]*0.85; // b
-              }
-            }
+            // Greenify and add scanlines for monochrome mode to give an accurate-ish view
+            rgba[i+0] = 0; // r
+            if (y&1) rgba[i+1] = rgba[i+1]*2 / 3;
+            rgba[i+2] = 0; // b
             i+=4;
           }
         }
@@ -212,16 +96,9 @@
     }
       // When the 'upload' button is clicked...
       document.getElementById("upload").addEventListener("click", function() {
-        var js = "";
-
-        // Save color mode information
-        var colorMode = document.querySelector('input[name="colorMode"]:checked').value;
-        var isColorMode = colorMode === "2bitcolor";
-        
         sendCustomizedApp({
           storage:[
-            {name:"USER/customimg.img", content:customImage},
-            {name:"USER/customimg.mode", content:isColorMode ? "color" : "mono"},
+            {name:"USER/customimg.img", content:customImage}
           ]
         });
       });
