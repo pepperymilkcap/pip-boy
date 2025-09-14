@@ -10,6 +10,15 @@
 
     <p>Upload an image (400x300px):</p>
     <p><input class="form-input" id="customfile" type="file"></p>
+    <p>Color Mode:&nbsp;&nbsp;&nbsp;
+    <label class="form-radio">
+      <input type="radio" name="colormode" value="mono" checked onchange="drawPreview()">
+      <i class="form-icon"></i> Monochrome (compatible)
+    </label>
+    <label class="form-radio">
+      <input type="radio" name="colormode" value="color" onchange="drawPreview()">
+      <i class="form-icon"></i> Multi-color (enhanced)
+    </label></p>
     <p>Brightness:&nbsp;
     <input class="slider" type="range" id="brightness" min="-127" max="127" value="0" onchange="drawPreview()"></input><span id="brightnessv"></span></p>
     <p>Contrast:&nbsp;&nbsp;&nbsp;&nbsp;
@@ -40,8 +49,13 @@
         let imgH = img.naturalHeight;
         // todo: maintain aspect?
         ctx.drawImage(img, 0, 0, imgW, imgH, 0, 0, IMGW, IMGH);
+        
+        // Check color mode
+        var colorMode = document.querySelector('input[name="colormode"]:checked').value;
+        var isColor = colorMode === "color";
+        
         var options = {
-          mode:"2bitbw",
+          mode: isColor ? "4bitcolor" : "2bitbw",
           output:"raw",
           transparent:false,
           compression:false,
@@ -59,12 +73,24 @@
         options.width = IMGW;
         options.height = IMGH;
         customImage = imageconverter.RGBAtoString(rgba, options).substr(3); // convert image, cut off the header
+        
+        // Apply preview effects based on mode
         var i = 0;
         for (var y=0;y<IMGH;y++) {
-          for (var x=0;x<IMGW;x++) { // greenify and add scanlines to give an accurate-ish view
-            rgba[i+0] = 0; // r
-            if (y&1) rgba[i+1] = rgba[i+1]*2 / 3;
-            rgba[i+2] = 0; // b
+          for (var x=0;x<IMGW;x++) {
+            if (!isColor) {
+              // Monochrome mode: greenify and add scanlines for Pip-Boy look
+              rgba[i+0] = 0; // r
+              if (y&1) rgba[i+1] = rgba[i+1]*2 / 3; // scanline effect
+              rgba[i+2] = 0; // b
+            } else {
+              // Color mode: show actual colors with slight scanline effect
+              if (y&1) {
+                rgba[i+0] = rgba[i+0]*0.9; // slight scanline effect
+                rgba[i+1] = rgba[i+1]*0.9;
+                rgba[i+2] = rgba[i+2]*0.9;
+              }
+            }
             i+=4;
           }
         }

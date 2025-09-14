@@ -204,6 +204,82 @@
       },toRGBA:function(c,palette) {
         return palette.rgb888[c];
       }
+    },
+    "2bitcolor":{
+      bpp:2,name:"2 bit multi-color (Pip-Boy optimized)",
+      fromRGBA:function(r,g,b) {
+        // Simple 2-bit color mapping optimized for Pip-Boy
+        var gr = (r+g+b) / 3; // grayscale value
+        var isGreen = g > (r + b) * 0.7; // detect green-ish colors
+        var isAmber = (r > g * 0.8) && (g > b * 1.5); // detect amber-ish colors
+        
+        if (gr < 64) return 0; // black
+        else if (isGreen && gr > 128) return 2; // bright green
+        else if (isAmber && gr > 96) return 3; // amber/orange
+        else return 1; // dim green/gray
+      },toRGBA:function(c) {
+        c = c&3;
+        var colors = [
+          0xFF000000, // black
+          0xFF004400, // dim green
+          0xFF00FF00, // bright green  
+          0xFFFFAA00  // amber
+        ];
+        return colors[c];
+      }
+    },
+    "4bitcolor":{
+      bpp:4,name:"4 bit multi-color (Pip-Boy optimized)",
+      fromRGBA:function(r,g,b) {
+        // 4-bit color mapping optimized for Pip-Boy aesthetic
+        var gr = (r+g+b) / 3;
+        var isRed = r > (g + b) * 1.2;
+        var isGreen = g > (r + b) * 0.8;
+        var isBlue = b > (r + g) * 1.2;
+        var isAmber = (r > g * 0.6) && (g > b * 1.2);
+        
+        if (gr < 32) return 0; // black
+        else if (gr < 96) {
+          if (isRed) return 1; // dark red
+          else if (isBlue) return 2; // dark blue
+          else if (isGreen) return 3; // dark green
+          else return 4; // dark gray
+        } else if (gr < 160) {
+          if (isRed) return 5; // medium red
+          else if (isBlue) return 6; // medium blue
+          else if (isGreen) return 7; // medium green
+          else if (isAmber) return 8; // amber
+          else return 9; // medium gray
+        } else {
+          if (isRed) return 10; // bright red
+          else if (isBlue) return 11; // bright blue
+          else if (isGreen) return 12; // bright green
+          else if (isAmber) return 13; // bright amber
+          else if (gr < 224) return 14; // light gray
+          else return 15; // white
+        }
+      },toRGBA:function(c) {
+        c = c&15;
+        var colors = [
+          0xFF000000, // 0: black
+          0xFF440000, // 1: dark red
+          0xFF000044, // 2: dark blue
+          0xFF004400, // 3: dark green
+          0xFF444444, // 4: dark gray
+          0xFF880000, // 5: medium red
+          0xFF000088, // 6: medium blue
+          0xFF008800, // 7: medium green
+          0xFF886600, // 8: amber
+          0xFF888888, // 9: medium gray
+          0xFFFF0000, // 10: bright red
+          0xFF0000FF, // 11: bright blue
+          0xFF00FF00, // 12: bright green
+          0xFFFFAA00, // 13: bright amber
+          0xFFCCCCCC, // 14: light gray
+          0xFFFFFFFF  // 15: white
+        ];
+        return colors[c];
+      }
     }
   };
   // What Espruino uses by default

@@ -4,16 +4,56 @@ if (Pip.remove) Pip.remove();
 delete Pip.remove;
 
 {
-  // create new Graphics instance
-  let G = Graphics.createArrayBuffer(400,300,2,{
+  // First, read the image header to determine the bit depth
+  let f = E.openFile("USER/customimg.img","r");
+  if (!f) {
+    console.log("Custom image file not found");
+    return;
+  }
+  
+  let header = f.read(3); // Read width, height, bpp
+  if (!header || header.length < 3) {
+    f.close();
+    console.log("Invalid image file");
+    return;
+  }
+  
+  let width = header[0];
+  let height = header[1];
+  let bppByte = header[2];
+  let bpp = bppByte & 63; // Remove transparency and palette flags
+  let hasTransparency = !!(bppByte & 128);
+  let hasPalette = !!(bppByte & 64);
+  
+  // Calculate memory requirement
+  let pixelCount = width * height;
+  let bytesNeeded;
+  if (bpp === 1) bytesNeeded = pixelCount >> 3;
+  else if (bpp === 2) bytesNeeded = pixelCount >> 2;
+  else if (bpp === 4) bytesNeeded = pixelCount >> 1;
+  else bytesNeeded = pixelCount; // 8 bpp
+  
+  // Ensure we don't exceed memory limits (64KB CCM, with 32KB for audio)
+  let maxMemory = 30000; // Conservative limit
+  if (bytesNeeded > maxMemory) {
+    f.close();
+    console.log("Image too large for memory");
+    return;
+  }
+  
+  // Close and reopen file to start from beginning
+  f.close();
+  f = E.openFile("USER/customimg.img","r");
+  
+  // Create Graphics instance with appropriate bit depth
+  let G = Graphics.createArrayBuffer(width, height, bpp, {
     msb : true,
-    buffer : E.toArrayBuffer(E.memoryArea(0x10000000 + 32768, (400*300)>>2)) // Uses 30,000 bytes of the 64KB CCM memory, starting above the 32KB audio ring buffer
+    buffer : E.toArrayBuffer(E.memoryArea(0x10000000 + 32768, bytesNeeded))
   });
   G.clear();
   G.flip = () => Pip.blitImage(G,40,11);
 
-  // load image
-  let f = E.openFile("USER/customimg.img","r");
+  // Load the complete image file
   let o = 0, a = new Uint8Array(G.buffer), b = f.read(2048);
   while (b) {
     a.set(b, o);
