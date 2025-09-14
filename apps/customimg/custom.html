@@ -214,9 +214,14 @@
       document.getElementById("upload").addEventListener("click", function() {
         var js = "";
 
+        // Save color mode information
+        var colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+        var isColorMode = colorMode === "2bitcolor";
+        
         sendCustomizedApp({
           storage:[
             {name:"USER/customimg.img", content:customImage},
+            {name:"USER/customimg.mode", content:isColorMode ? "color" : "mono"},
           ]
         });
       });
