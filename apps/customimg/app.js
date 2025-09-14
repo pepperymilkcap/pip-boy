@@ -28,16 +28,17 @@ delete Pip.remove;
   // Calculate memory requirement
   let pixelCount = width * height;
   let bytesNeeded;
-  if (bpp === 1) bytesNeeded = pixelCount >> 3;
-  else if (bpp === 2) bytesNeeded = pixelCount >> 2;
-  else if (bpp === 4) bytesNeeded = pixelCount >> 1;
+  if (bpp === 1) bytesNeeded = Math.ceil(pixelCount / 8);
+  else if (bpp === 2) bytesNeeded = Math.ceil(pixelCount / 4);
+  else if (bpp === 4) bytesNeeded = Math.ceil(pixelCount / 2);
   else bytesNeeded = pixelCount; // 8 bpp
   
   // Ensure we don't exceed memory limits (64KB CCM, with 32KB for audio)
-  let maxMemory = 30000; // Conservative limit
+  // Be conservative and limit to 28KB to leave room for headers and other data
+  let maxMemory = 28672; // 28KB conservative limit
   if (bytesNeeded > maxMemory) {
     f.close();
-    console.log("Image too large for memory");
+    console.log("Image too large for memory:", bytesNeeded, "bytes needed,", maxMemory, "bytes available");
     return;
   }
   

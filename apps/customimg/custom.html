@@ -54,8 +54,11 @@
         var colorMode = document.querySelector('input[name="colormode"]:checked').value;
         var isColor = colorMode === "color";
         
+        // Choose appropriate color mode based on memory constraints
+        // 4bitcolor uses 60KB for 400x300, which is close to the 64KB limit
+        // Use 2bitcolor for better memory efficiency while still providing color
         var options = {
-          mode: isColor ? "4bitcolor" : "2bitbw",
+          mode: isColor ? "2bitcolor" : "2bitbw",
           output:"raw",
           transparent:false,
           compression:false,
