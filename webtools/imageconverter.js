@@ -77,6 +77,32 @@
         return 0xFF000000|(c<<16)|(c<<8)|c;
       }
     },
+    "2bitcolor":{
+      bpp:2,name:"2 bit color",
+      fromRGBA:function(r,g,b) {
+        // Map RGB to 2-bit color palette
+        // 0: black, 1: red, 2: green, 3: white/yellow
+        var rThresh = r > 128;
+        var gThresh = g > 128;
+        var bThresh = b > 128;
+        
+        // Priority mapping for color perception
+        if (!rThresh && !gThresh && !bThresh) return 0; // black
+        if (rThresh && gThresh) return 3; // yellow/white (both red and green)
+        if (gThresh) return 2; // green
+        if (rThresh || bThresh) return 1; // red (including blue -> red for visibility)
+        return 0; // fallback to black
+      },toRGBA:function(c) {
+        c = c&3;
+        switch(c) {
+          case 0: return 0xFF000000; // black
+          case 1: return 0xFFFF0000; // red
+          case 2: return 0xFF00FF00; // green
+          case 3: return 0xFFFFFF00; // yellow
+          default: return 0xFF000000;
+        }
+      }
+    },
     "4bitbw":{
       bpp:4,name:"4 bit greyscale",
       fromRGBA:function(r,g,b) {
@@ -209,8 +235,8 @@
   // What Espruino uses by default
   const BPP_TO_COLOR_FORMAT = {
     1 : "1bit",
-    2 : "2bitbw",
-    3 : "3bit",
+    2 : "2bitbw", // default remains grayscale for compatibility
+    3 : "3bit", 
     4 : "4bitmac",
     8 : "web",
     16 : "rgb565"
