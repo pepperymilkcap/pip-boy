@@ -76,7 +76,10 @@ const Comms = {
       return Puck.getConnection();
     }
   },
-  supportsPacketUpload : () => (!SETTINGS.noPackets) && Comms.getConnection().espruinoSendFile && device.version && !Utils.versionLess(device.version,"2v25"),
+  supportsPacketUpload : () => {
+    if (!device.version) return false; // Device version not available, fall back to legacy upload
+    return (!SETTINGS.noPackets) && Comms.getConnection().espruinoSendFile && !Utils.versionLess(device.version,"2v25");
+  },
   // Faking EventEmitter
   handlers : {},
   on : function(id, callback) { // calling with callback=undefined will disable
