@@ -698,14 +698,27 @@ ${Comms.espruinoDevice}.print("\\xFF");
     Progress.show({title:`Writing ${JSON.stringify(filename)}`,percent:0});
     if (Comms.supportsPacketUpload()) {
       return Comms.getConnection().espruinoSendFile(filename, data, {
+        fs: Const.FILES_IN_FS,
         chunkSize: Const.PACKET_UPLOAD_CHUNKSIZE,
         noACK: Const.PACKET_UPLOAD_NOACK
+      }).then(result => {
+        Progress.hide();
+        return result;
+      }).catch(err => {
+        Progress.hide();
+        throw err;
       });
     } else {
       let cmds = AppInfo.getFileUploadCommands(filename, data);
       return Comms.write("\x10"+Comms.getProgressCmd()+"\n").then(() =>
         Comms.uploadCommandList(cmds, 0, cmds.length)
-      );
+      ).then(result => {
+        Progress.hide();
+        return result;
+      }).catch(err => {
+        Progress.hide();
+        throw err;
+      });
     }
   },
 };
