@@ -1417,6 +1417,169 @@ if (btn) btn.addEventListener("click",event=>{
   });
 });
 
+// Upload files button
+btn = document.getElementById("uploadfiles");
+if (btn) btn.addEventListener("click",event=>{
+  showFileUploadPrompt();
+});
+
+function showFileUploadPrompt() {
+  let modal = htmlElement(`<div class="modal active">
+    <a href="#close" class="modal-overlay" aria-label="Close"></a>
+    <div class="modal-container">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close"></a>
+        <div class="modal-title h5">Upload Files</div>
+      </div>
+      <div class="modal-body">
+        <div class="content">
+          <p>Select files to upload directly to the device storage:</p>
+          <input type="file" id="fileUploadInput" multiple accept="*/*">
+          <div id="fileList" style="margin-top: 10px;"></div>
+          <div class="form-group" style="margin-top: 10px;">
+            <label class="form-label">Upload directory (optional):</label>
+            <input type="text" id="uploadDirectory" class="form-input" placeholder="e.g., USER/ or apps/myapp/" />
+            <p class="form-input-hint">Leave empty to upload to root storage. Include trailing slash for directories.</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="startUpload" disabled>Upload Files</button>
+        <button class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+      </div>
+    </div>
+  </div>`);
+  
+  document.body.append(modal);
+  
+  let fileInput = modal.querySelector('#fileUploadInput');
+  let fileList = modal.querySelector('#fileList');
+  let uploadBtn = modal.querySelector('#startUpload');
+  let directoryInput = modal.querySelector('#uploadDirectory');
+  let selectedFiles = [];
+  
+  // Handle file selection
+  fileInput.addEventListener('change', function(event) {
+    selectedFiles = Array.from(event.target.files);
+    updateFileList();
+  });
+  
+  function updateFileList() {
+    if (selectedFiles.length === 0) {
+      fileList.innerHTML = '<p class="text-gray">No files selected</p>';
+      uploadBtn.disabled = true;
+      return;
+    }
+    
+    let html = '<div class="panel"><div class="panel-header"><div class="panel-title">Selected Files:</div></div><div class="panel-body">';
+    selectedFiles.forEach((file, index) => {
+      html += `<div class="tile tile-centered">
+        <div class="tile-content">
+          <div class="tile-title">${escapeHtml(file.name)}</div>
+          <div class="tile-subtitle text-gray">${(file.size / 1024).toFixed(1)} KB</div>
+        </div>
+        <div class="tile-action">
+          <button class="btn btn-sm" onclick="removeFile(${index})">Remove</button>
+        </div>
+      </div>`;
+    });
+    html += '</div></div>';
+    fileList.innerHTML = html;
+    uploadBtn.disabled = false;
+  }
+  
+  // Global function to remove files (needed for onclick)
+  window.removeFile = function(index) {
+    selectedFiles.splice(index, 1);
+    updateFileList();
+  };
+  
+  // Handle upload
+  uploadBtn.addEventListener('click', function() {
+    if (selectedFiles.length === 0) return;
+    
+    let directory = directoryInput.value.trim();
+    if (directory && !directory.endsWith('/')) {
+      directory += '/';
+    }
+    
+    modal.remove();
+    uploadSelectedFiles(selectedFiles, directory);
+  });
+  
+  // Handle close button
+  modal.querySelector('a[href="#close"]').addEventListener('click', function(event) {
+    event.preventDefault();
+    modal.remove();
+  });
+}
+
+function uploadSelectedFiles(files, directory) {
+  if (files.length === 0) return;
+  
+  // Check if device is connected
+  if (!Comms.isConnected()) {
+    showToast("Please connect to a device before uploading files", "error");
+    return;
+  }
+  
+  let totalFiles = files.length;
+  let uploadedFiles = 0;
+  let failedFiles = [];
+  
+  Progress.show({title: `Uploading files (0/${totalFiles})`, sticky: true});
+  
+  function uploadNextFile() {
+    if (files.length === 0) {
+      Progress.hide({sticky: true});
+      
+      if (failedFiles.length === 0) {
+        showToast(`Successfully uploaded ${uploadedFiles} file${uploadedFiles !== 1 ? 's' : ''}`, "success");
+      } else {
+        showToast(`Uploaded ${uploadedFiles} files, ${failedFiles.length} failed: ${failedFiles.join(', ')}`, "warning");
+      }
+      return;
+    }
+    
+    let file = files.shift();
+    let fileName = directory + file.name;
+    
+    Progress.show({title: `Uploading ${file.name} (${uploadedFiles + 1}/${totalFiles})`, sticky: true});
+    
+    // Read file as ArrayBuffer and convert to string
+    let reader = new FileReader();
+    reader.onload = function(event) {
+      let arrayBuffer = event.target.result;
+      let data = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      
+      // Convert binary data to string
+      for (let i = 0; i < data.length; i++) {
+        binaryString += String.fromCharCode(data[i]);
+      }
+      
+      Comms.writeFile(fileName, binaryString).then(() => {
+        uploadedFiles++;
+        uploadNextFile();
+      }).catch(err => {
+        console.error(`Failed to upload ${file.name}:`, err);
+        failedFiles.push(file.name);
+        uploadNextFile();
+      });
+    };
+    
+    reader.onerror = function() {
+      console.error(`Failed to read ${file.name}`);
+      failedFiles.push(file.name);
+      uploadNextFile();
+    };
+    
+    reader.readAsArrayBuffer(file);
+  }
+  
+  uploadNextFile();
+}
+
 // Open terminal button
 if (Espruino.Core.Terminal)
   Espruino.Core.Terminal.OVERRIDE_CONTENTS = "Click here and type to communicate with Bangle.js";
