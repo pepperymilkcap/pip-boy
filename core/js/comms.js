@@ -697,25 +697,31 @@ ${Comms.espruinoDevice}.print("\\xFF");
     console.log(`<COMMS> writeFile ${JSON.stringify(filename)} (${data.length}b)`);
     Progress.show({title:`Writing ${JSON.stringify(filename)}`,percent:0});
     if (Comms.supportsPacketUpload()) {
+      console.log(`<COMMS> Using packet upload for ${JSON.stringify(filename)}`);
       return Comms.getConnection().espruinoSendFile(filename, data, {
         fs: Const.FILES_IN_FS,
         chunkSize: Const.PACKET_UPLOAD_CHUNKSIZE,
         noACK: Const.PACKET_UPLOAD_NOACK
       }).then(result => {
+        console.log(`<COMMS> Packet upload completed for ${JSON.stringify(filename)}`);
         Progress.hide();
         return result;
       }).catch(err => {
+        console.error(`<COMMS> Packet upload failed for ${JSON.stringify(filename)}:`, err);
         Progress.hide();
         throw err;
       });
     } else {
+      console.log(`<COMMS> Using legacy upload for ${JSON.stringify(filename)}`);
       let cmds = AppInfo.getFileUploadCommands(filename, data);
       return Comms.write("\x10"+Comms.getProgressCmd()+"\n").then(() =>
         Comms.uploadCommandList(cmds, 0, cmds.length)
       ).then(result => {
+        console.log(`<COMMS> Legacy upload completed for ${JSON.stringify(filename)}`);
         Progress.hide();
         return result;
       }).catch(err => {
+        console.error(`<COMMS> Legacy upload failed for ${JSON.stringify(filename)}:`, err);
         Progress.hide();
         throw err;
       });
