@@ -1,0 +1,13 @@
+  {
+    "id": "antonclk",
+    "name": "Anton Clock",
+    "version": "0.01",
+    "description": "A simple clock using the bold Anton font. Original version designed for Bangle.js smart watches",
+    "icon": "app.png",
+    "tags": "clock",
+    "type": "app",
+    "readme": "README.md",
+    "storage": [
+      { "name": "USER/antonclk.js", "url": "app.js" }
+    ]
+  }

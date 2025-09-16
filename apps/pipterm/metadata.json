@@ -1,0 +1,12 @@
+{ "id": "pipterm",
+  "name": "Pip-Terminal",
+  "version":"0.01",
+  "description": "A REPL terminal for the Pip-Boy with a virtual QWERTY keyboard",
+  "icon": "app.png",
+  "tags": "system",
+  "type": "app",
+  "readme": "README.md",
+  "storage": [
+    {"name":"USER/pipterm.js","url":"app.js"}
+  ]
+}
