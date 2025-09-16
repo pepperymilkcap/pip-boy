@@ -1360,38 +1360,60 @@ if (btn) btn.addEventListener("click",event=>{
         timeoutMax: commsLib.timeoutMax
       };
       
-      // Set extended timeouts for screenshot (4x default values to ensure complete transmission)
-      commsLib.timeoutNormal = 1200; // 4 * 300ms
-      commsLib.timeoutNewline = 40000; // 4 * 10000ms  
-      commsLib.timeoutMax = 120000; // 4 * 30000ms
+      // Set extended timeouts for screenshot to handle large data streams
+      // g.dump() sends a continuous stream that may take a long time to complete
+      commsLib.timeoutNormal = 5000; // 5 seconds after last data received
+      commsLib.timeoutNewline = 60000; // 60 seconds total for newline-based wait (not used)
+      commsLib.timeoutMax = 180000; // 3 minutes maximum total time
       
-      Comms.write("\x10g.dump();\n", {waitNewLine: true}).then((s)=>{
+      // Use waitNewLine: false to avoid timing out on long continuous data streams
+      // g.dump() outputs the complete image data as one continuous stream without intermediate newlines
+      Comms.write("\x10g.dump();\n", {waitNewLine: false}).then((s)=>{
         // Restore original timeout settings
         commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
         // Extract the image data URL from the response
-        let imageDataUrl = s.split("\n")[0];
+        // g.dump() may return response with echo, command, and data - find the data URL
+        let imageDataUrl = "";
+        let lines = s.split("\n");
+        
+        // Look for the data URL in the response - it should start with "data:image/"
+        for (let line of lines) {
+          line = line.trim();
+          if (line.startsWith('data:image/')) {
+            imageDataUrl = line;
+            break;
+          }
+        }
+        
+        // If no data URL found in lines, the whole response might be the data URL
+        if (!imageDataUrl && s.trim().startsWith('data:image/')) {
+          imageDataUrl = s.trim();
+        }
         
         // Validate that we have a complete data URL
         if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
-          throw new Error("Invalid or incomplete image data received");
+          throw new Error("Invalid or incomplete image data received. Response: " + s.substring(0, 200) + "...");
         }
         
         // For base64 data URLs, ensure the string length suggests complete transmission
         if (imageDataUrl.includes('base64,')) {
           let base64Part = imageDataUrl.split('base64,')[1];
           if (!base64Part || base64Part.length < 100) {
-            throw new Error("Image data appears incomplete - base64 data too short");
+            throw new Error("Image data appears incomplete - base64 data too short: " + base64Part?.length + " chars");
           }
           
           // Check if base64 data ends properly (should be complete base64)
           // Base64 strings should have length divisible by 4 when padding is included
           let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
           if (cleanBase64.length < 1000) { // Minimum expected size for a reasonable screenshot
-            throw new Error("Image data appears incomplete - insufficient data length");
+            throw new Error("Image data appears incomplete - insufficient data length: " + cleanBase64.length + " chars");
           }
+          
+          // Log success for debugging
+          console.log("Screenshot data received successfully: " + cleanBase64.length + " base64 characters");
         }
         
         Progress.show({title:"Processing complete screenshot",percent:85,sticky:true});
