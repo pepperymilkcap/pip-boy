@@ -1345,6 +1345,12 @@ if (btn) btn.addEventListener("click", event => {
 // Screenshot button
 btn = document.getElementById("screenshot");
 if (btn) btn.addEventListener("click",event=>{
+  // Check if device is connected first
+  if (!Comms.isConnected()) {
+    showPrompt("Screenshot","Please connect to a device before taking a screenshot",{ok:1});
+    return;
+  }
+  
   getInstalledApps(false).then(()=>{
     if (device.id=="BANGLEJS"){
       showPrompt("Screenshot","Screenshots are not supported on Bangle.js 1",{ok:1});
@@ -1412,8 +1418,12 @@ if (btn) btn.addEventListener("click",event=>{
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
         showToast("Error creating screenshot: "+err,"error");
+        Progress.hide({sticky:true});
       });
     }
+  }).catch(err=>{
+    showToast("Error getting device info: "+err,"error");
+    Progress.hide({sticky:true});
   });
 });
 
