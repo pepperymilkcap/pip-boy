@@ -1377,7 +1377,7 @@ function startProgressiveScreenshot(demoMode = false) {
     <div class="modal-container" style="max-width: 600px;">
       <div class="modal-header">
         <a href="#close" class="btn btn-clear float-right" aria-label="Close"></a>
-        <div class="modal-title h5">Progressive Screenshot</div>
+        <div class="modal-title h5">Screenshot Data Transfer</div>
       </div>
       <div class="modal-body">
         <div class="content" style="text-align: center;">
@@ -1416,10 +1416,15 @@ function startProgressiveScreenshot(demoMode = false) {
   
   // Set up event handlers
   const cleanup = () => {
-    if (originalDataHandler) {
-      Comms.on("data", originalDataHandler);
-    } else {
-      Comms.on("data"); // Remove our handler
+    try {
+      if (originalDataHandler) {
+        Comms.on("data", originalDataHandler);
+      } else {
+        Comms.on("data"); // Remove our handler
+      }
+    } catch (err) {
+      // Ignore errors when no connection is active
+      console.log("Could not restore data handler:", err.message);
     }
     if (timeoutId) clearTimeout(timeoutId);
   };
@@ -1476,8 +1481,35 @@ function startProgressiveScreenshot(demoMode = false) {
     originalDataHandler = Comms.handlers.data;
   }
   
-  // If in demo mode, skip the real communications setup
+  // If in demo mode, prompt for device connection instead
   if (demoMode) {
+    // Device not connected - prompt user to connect via webserial
+    statusDiv.textContent = "No device connected. Please connect your device via Web Serial.";
+    progressBar.style.width = '0%';
+    
+    // Create connect button
+    const connectButtonDiv = document.createElement('div');
+    connectButtonDiv.style.marginTop = '20px';
+    connectButtonDiv.innerHTML = '<button class="btn btn-primary" id="connect-device-btn">Connect Device</button>';
+    
+    // Insert the connect button after the status div
+    statusDiv.parentNode.insertBefore(connectButtonDiv, statusDiv.nextSibling);
+    
+    // Handle connect button click
+    connectButtonDiv.querySelector('#connect-device-btn').addEventListener('click', () => {
+      // Close this modal and trigger the main connect flow
+      closeModal();
+      
+      // Trigger the main device connection
+      const connectBtn = document.getElementById('connectmydevice');
+      if (connectBtn) {
+        connectBtn.click();
+      }
+    });
+    
+    return; // Exit - wait for user to connect device
+    
+    /* COMMENTED OUT - DEMO MODE (preserved but non-functional)
     // Demo mode - simulate progressive screenshot with sample data
     statusDiv.textContent = "Demo: Simulating progressive screenshot...";
     
@@ -1549,6 +1581,7 @@ function startProgressiveScreenshot(demoMode = false) {
     }, 3000);
     
     return; // Exit demo mode
+    */
   }
   
   // Set up progressive data handler for real device communication
@@ -1574,10 +1607,9 @@ function startProgressiveScreenshot(demoMode = false) {
     
     // If we've started receiving data, try to render progressively
     if (dataStarted) {
-      // Calculate rough progress based on typical data URL size
-      const estimatedSize = 12000; // Rough estimate for a Bangle.js screenshot
-      const currentProgress = Math.min(95, (accumulatedData.length / estimatedSize) * 100);
-      progressBar.style.width = currentProgress + '%';
+      // Show simple progress without percentage (inaccurate progress bar removed)
+      statusDiv.textContent = "Receiving screenshot data...";
+      progressBar.style.width = '50%'; // Simple visual indicator
       
       // Look for a complete data URL line
       const lines = accumulatedData.split('\n');
@@ -1599,7 +1631,8 @@ function startProgressiveScreenshot(demoMode = false) {
                 // Enable save button since we have a valid image
                 saveBtn.disabled = false;
                 
-                statusDiv.textContent = `Loading... ${Math.round(currentProgress)}%`;
+                statusDiv.textContent = "Screenshot received successfully!";
+                progressBar.style.width = '100%';
               }
             };
             tempImg.onerror = () => {
