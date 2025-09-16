@@ -1416,7 +1416,7 @@ if (btn) btn.addEventListener("click",event=>{
           console.log("Screenshot data received successfully: " + cleanBase64.length + " base64 characters");
         }
         
-        Progress.show({title:"Processing complete screenshot",percent:85,sticky:true});
+        Progress.show({title:"Screenshot captured, loading image...",percent:88,sticky:true});
         
         let oImage = new Image();
         oImage.onload = function(){
@@ -1443,17 +1443,18 @@ if (btn) btn.addEventListener("click",event=>{
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            Progress.hide({sticky:true}); // Hide progress after download completes
           }).catch(() => {
             Progress.hide({sticky:true}); // cancelled
           });
         }
         
         oImage.onerror = function(){
-          throw new Error("Failed to load screenshot image - data may be corrupted or incomplete");
+          Progress.hide({sticky:true}); // Hide progress on error
+          showToast("Failed to load screenshot image - data may be corrupted or incomplete", "error");
         }
         
         oImage.src = imageDataUrl;
-        Progress.show({title:"Screenshot captured, loading image...",percent:88,sticky:true});
 
       }, err=>{
         // Restore original timeout settings in case of error
@@ -1461,9 +1462,14 @@ if (btn) btn.addEventListener("click",event=>{
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
+        Progress.hide({sticky:true}); // Hide progress on communication error
         showToast("Error creating screenshot: "+err,"error");
       });
     }
+  }).catch(err => {
+    // Handle error from getInstalledApps - device connection failed
+    Progress.hide({sticky:true}); // Hide the "Getting device info..." progress
+    showToast("Device connection failed, cannot take screenshot: "+err,"error");
   });
 });
 
