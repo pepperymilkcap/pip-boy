@@ -1,3 +1,4 @@
+
 let appJSON = []; // List of apps and info from apps.json
 let appSortInfo = {}; // list of data to sort by, from appdates.csv { created, modified }
 let appCounts = {};
@@ -1342,86 +1343,6 @@ if (btn) btn.addEventListener("click", event => {
   window.open(url, '_blank');
 });
 
-// Function to capture screenshot data with robust start/end markers (EspruinoTools method)
-function captureScreenshotWithMarkers() {
-  return new Promise((resolve, reject) => {
-    let connection = Comms.getConnection();
-    if (!connection) {
-      return reject("No active connection");
-    }
-
-    let dataBuffer = "";
-    let capturing = false;
-    let startMarkerFound = false;
-    let endMarkerFound = false;
-    const START_MARKER = "< <<";
-    const END_MARKER = ">> >";
-
-    // Create a data listener that looks for the special markers
-    function dataListener(data) {
-      dataBuffer += data;
-      
-      // Look for start marker
-      if (!startMarkerFound && dataBuffer.includes(START_MARKER)) {
-        let startIndex = dataBuffer.indexOf(START_MARKER);
-        // Remove everything before and including the start marker
-        dataBuffer = dataBuffer.substring(startIndex + START_MARKER.length);
-        startMarkerFound = true;
-        capturing = true;
-        console.log("Screenshot capture: Found start marker, beginning data capture");
-      }
-      
-      // Look for end marker
-      if (startMarkerFound && !endMarkerFound && dataBuffer.includes(END_MARKER)) {
-        let endIndex = dataBuffer.indexOf(END_MARKER);
-        // Extract only the data before the end marker
-        let capturedData = dataBuffer.substring(0, endIndex);
-        endMarkerFound = true;
-        capturing = false;
-        
-        console.log("Screenshot capture: Found end marker, data capture complete");
-        
-        // Clean up listener
-        connection.removeListener('data', dataListener);
-        
-        // Resolve with the captured data
-        resolve(capturedData);
-      }
-    }
-
-    // Set up timeout to prevent hanging
-    let timeout = setTimeout(() => {
-      connection.removeListener('data', dataListener);
-      reject("Screenshot capture timeout - markers not found");
-    }, 60000); // 60 second timeout
-
-    // Add the data listener
-    connection.on('data', dataListener);
-
-    // Send the wrapped command with markers
-    const command = "\x10print('<','<<');g.dump();print('>>','>')\n";
-    connection.write(command).then(() => {
-      console.log("Screenshot capture: Command sent, waiting for markers");
-    }).catch((err) => {
-      clearTimeout(timeout);
-      connection.removeListener('data', dataListener);
-      reject("Failed to send screenshot command: " + err);
-    });
-
-    // Override the timeout when we get the result
-    const originalResolve = resolve;
-    resolve = (data) => {
-      clearTimeout(timeout);
-      originalResolve(data);
-    };
-    const originalReject = reject;
-    reject = (error) => {
-      clearTimeout(timeout);
-      originalReject(error);
-    };
-  });
-}
-
 // Screenshot button
 btn = document.getElementById("screenshot");
 if (btn) btn.addEventListener("click",event=>{
@@ -1445,8 +1366,7 @@ if (btn) btn.addEventListener("click",event=>{
       commsLib.timeoutNewline = 30000; // 3 * 10000ms
       commsLib.timeoutMax = 90000; // 3 * 30000ms
       
-      // Use the robust EspruinoTools method for capturing complete command output
-      captureScreenshotWithMarkers().then((s)=>{
+      Comms.write("\x10g.dump();\n").then((s)=>{
         // Restore original timeout settings
         commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
