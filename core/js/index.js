@@ -1343,6 +1343,218 @@ if (btn) btn.addEventListener("click", event => {
   window.open(url, '_blank');
 });
 
+// Streaming screenshot image decoder
+function createStreamingImageDecoder() {
+  // Constants from imageconverter.js
+  const PALETTE = {
+    MAC16: [
+      0x000000, 0x444444, 0x888888, 0xBBBBBB,
+      0x996633, 0x663300, 0x006600, 0x00aa00,
+      0x0099ff, 0x0000cc, 0x330099, 0xff0099,
+      0xdd0000, 0xff6600, 0xffff00, 0xffffff
+    ],
+    WEB: [0x000000,0x000033,0x000066,0x000099,0x0000cc,0x0000ff,0x003300,0x003333,0x003366,0x003399,0x0033cc,0x0033ff,0x006600,0x006633,0x006666,0x006699,0x0066cc,0x0066ff,0x009900,0x009933,0x009966,0x009999,0x0099cc,0x0099ff,0x00cc00,0x00cc33,0x00cc66,0x00cc99,0x00cccc,0x00ccff,0x00ff00,0x00ff33,0x00ff66,0x00ff99,0x00ffcc,0x00ffff,0x330000,0x330033,0x330066,0x330099,0x3300cc,0x3300ff,0x333300,0x333333,0x333366,0x333399,0x3333cc,0x3333ff,0x336600,0x336633,0x336666,0x336699,0x3366cc,0x3366ff,0x339900,0x339933,0x339966,0x339999,0x3399cc,0x3399ff,0x33cc00,0x33cc33,0x33cc66,0x33cc99,0x33cccc,0x33ccff,0x33ff00,0x33ff33,0x33ff66,0x33ff99,0x33ffcc,0x33ffff,0x660000,0x660033,0x660066,0x660099,0x6600cc,0x6600ff,0x663300,0x663333,0x663366,0x663399,0x6633cc,0x6633ff,0x666600,0x666633,0x666666,0x666699,0x6666cc,0x6666ff,0x669900,0x669933,0x669966,0x669999,0x6699cc,0x6699ff,0x66cc00,0x66cc33,0x66cc66,0x66cc99,0x66cccc,0x66ccff,0x66ff00,0x66ff33,0x66ff66,0x66ff99,0x66ffcc,0x66ffff,0x990000,0x990033,0x990066,0x990099,0x9900cc,0x9900ff,0x993300,0x993333,0x993366,0x993399,0x9933cc,0x9933ff,0x996600,0x996633,0x996666,0x996699,0x9966cc,0x9966ff,0x999900,0x999933,0x999966,0x999999,0x9999cc,0x9999ff,0x99cc00,0x99cc33,0x99cc66,0x99cc99,0x99cccc,0x99ccff,0x99ff00,0x99ff33,0x99ff66,0x99ff99,0x99ffcc,0x99ffff,0xcc0000,0xcc0033,0xcc0066,0xcc0099,0xcc00cc,0xcc00ff,0xcc3300,0xcc3333,0xcc3366,0xcc3399,0xcc33cc,0xcc33ff,0xcc6600,0xcc6633,0xcc6666,0xcc6699,0xcc66cc,0xcc66ff,0xcc9900,0xcc9933,0xcc9966,0xcc9999,0xcc99cc,0xcc99ff,0xcccc00,0xcccc33,0xcccc66,0xcccc99,0xcccccc,0xccccff,0xccff00,0xccff33,0xccff66,0xccff99,0xccffcc,0xccffff,0xff0000,0xff0033,0xff0066,0xff0099,0xff00cc,0xff00ff,0xff3300,0xff3333,0xff3366,0xff3399,0xff33cc,0xff33ff,0xff6600,0xff6633,0xff6666,0xff6699,0xff66cc,0xff66ff,0xff9900,0xff9933,0xff9966,0xff9999,0xff99cc,0xff99ff,0xffcc00,0xffcc33,0xffcc66,0xffcc99,0xffcccc,0xffccff,0xffff00,0xffff33,0xffff66,0xffff99,0xffffcc,0xffffff]
+  };
+
+  const FORMATS = {
+    "1bit": {
+      bpp: 1,
+      toRGBA: function(c) {
+        return c ? 0xFFFFFFFF : 0xFF000000;
+      }
+    },
+    "2bitbw": {
+      bpp: 2,
+      toRGBA: function(c) {
+        c = c & 3;
+        c = c | (c << 2) | (c << 4) | (c << 6);
+        return 0xFF000000 | (c << 16) | (c << 8) | c;
+      }
+    },
+    "3bit": {
+      bpp: 3,
+      toRGBA: function(c) {
+        return ((c & 1 ? 0x0000FF : 0x000000) |
+                (c & 2 ? 0x00FF00 : 0x000000) |
+                (c & 4 ? 0xFF0000 : 0x000000) |
+                0xFF000000);
+      }
+    },
+    "4bitmac": {
+      bpp: 4,
+      toRGBA: function(c) {
+        return 0xFF000000 | PALETTE.MAC16[c];
+      }
+    },
+    "web": {
+      bpp: 8,
+      toRGBA: function(c) {
+        return 0xFF000000 | PALETTE.WEB[c];
+      }
+    },
+    "rgb565": {
+      bpp: 16,
+      toRGBA: function(c) {
+        var r = (c >> 11) & 0x1F;
+        var g = (c >> 5) & 0x3F;
+        var b = c & 0x1F;
+        r = (r << 3) | (r >> 2);
+        g = (g << 2) | (g >> 4);
+        b = (b << 3) | (b >> 2);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+      }
+    }
+  };
+
+  const BPP_TO_COLOR_FORMAT = {
+    1: "1bit",
+    2: "2bitbw",
+    3: "3bit",
+    4: "4bitmac",
+    8: "web",
+    16: "rgb565"
+  };
+
+  return {
+    buffer: "",
+    canvas: null,
+    ctx: null,
+    imageData: null,
+    rgba: null,
+    width: 0,
+    height: 0,
+    bpp: 0,
+    transparentCol: -1,
+    fmt: null,
+    bitmapSize: 0,
+    headerParsed: false,
+    pixelIndex: 0,
+    nibits: 0,
+    nidata: 0,
+    dataStartIndex: 0,
+    bytesRead: 0, // Track bytes consumed from data section
+
+    // Process incoming data chunk
+    processChunk: function(data) {
+      this.buffer += data;
+      
+      if (!this.headerParsed) {
+        if (!this.parseHeader()) {
+          return false; // Need more data for header
+        }
+      }
+
+      // Render available pixels
+      this.renderPixels();
+      return true;
+    },
+
+    // Parse image header from buffer
+    parseHeader: function() {
+      if (this.buffer.length < 3) return false;
+
+      let p = 0;
+      this.width = this.buffer.charCodeAt(p++) & 0xFF;
+      this.height = this.buffer.charCodeAt(p++) & 0xFF;
+      this.bpp = this.buffer.charCodeAt(p++) & 0xFF;
+      
+      if (this.bpp & 128) {
+        if (this.buffer.length < 4) return false;
+        this.bpp &= 127;
+        this.transparentCol = this.buffer.charCodeAt(p++) & 0xFF;
+      }
+
+      const mode = BPP_TO_COLOR_FORMAT[this.bpp];
+      if (!mode) {
+        console.error("Unknown image format with bpp:", this.bpp);
+        return false;
+      }
+
+      this.fmt = FORMATS[mode];
+      this.bitmapSize = ((this.width * this.height * this.bpp) + 7) >> 3;
+      this.dataStartIndex = p;
+      this.headerParsed = true;
+
+      // Create canvas and context
+      this.canvas = document.createElement('canvas');
+      this.canvas.width = this.width;
+      this.canvas.height = this.height;
+      this.ctx = this.canvas.getContext("2d");
+      this.imageData = this.ctx.getImageData(0, 0, this.width, this.height);
+      this.rgba = this.imageData.data;
+
+      console.log(`Image header parsed: ${this.width}x${this.height}, ${this.bpp}bpp, expected size: ${this.bitmapSize}`);
+      return true;
+    },
+
+    // Render pixels from available data
+    renderPixels: function() {
+      if (!this.headerParsed) return;
+
+      const totalPixels = this.width * this.height;
+      let p = this.dataStartIndex + this.bytesRead;
+
+      // Continue from where we left off
+      while (this.pixelIndex < totalPixels) {
+        // Accumulate bits for this pixel
+        while (this.nibits < this.bpp && p < this.buffer.length) {
+          this.nidata = (this.nidata << 8) | (this.buffer.charCodeAt(p++) & 0xFF);
+          this.nibits += 8;
+          this.bytesRead = p - this.dataStartIndex;
+        }
+
+        if (this.nibits >= this.bpp) {
+          // Extract pixel value
+          const c = (this.nidata >> (this.nibits - this.bpp)) & ((1 << this.bpp) - 1);
+          this.nibits -= this.bpp;
+
+          // Convert to RGBA
+          let cr = this.fmt.toRGBA(c);
+          if (c === this.transparentCol) {
+            cr = cr & 0xFFFFFF; // Remove alpha
+          }
+
+          // Set pixel in image data
+          const rgbaIndex = this.pixelIndex * 4;
+          this.rgba[rgbaIndex] = (cr >> 16) & 255; // r
+          this.rgba[rgbaIndex + 1] = (cr >> 8) & 255; // g
+          this.rgba[rgbaIndex + 2] = cr & 255; // b
+          this.rgba[rgbaIndex + 3] = cr >>> 24; // a
+
+          this.pixelIndex++;
+        } else {
+          // Need more data
+          break;
+        }
+      }
+
+      // Update canvas with rendered pixels
+      if (this.pixelIndex > 0) {
+        this.ctx.putImageData(this.imageData, 0, 0);
+      }
+    },
+
+    // Check if image is complete
+    isComplete: function() {
+      return this.headerParsed && 
+             this.buffer.length >= this.dataStartIndex + this.bitmapSize &&
+             this.pixelIndex >= this.width * this.height;
+    },
+
+    // Get current progress percentage
+    getProgress: function() {
+      if (!this.headerParsed) return 0;
+      const totalPixels = this.width * this.height;
+      return Math.floor((this.pixelIndex / totalPixels) * 100);
+    },
+
+    // Get final canvas as data URL
+    getDataURL: function() {
+      return this.canvas ? this.canvas.toDataURL() : null;
+    }
+  };
+}
+
 // Screenshot button
 btn = document.getElementById("screenshot");
 if (btn) btn.addEventListener("click",event=>{
@@ -1350,68 +1562,73 @@ if (btn) btn.addEventListener("click",event=>{
     if (device.id=="BANGLEJS"){
       showPrompt("Screenshot","Screenshots are not supported on Bangle.js 1",{ok:1});
     } else {
-      let url;
-      Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
+      let decoder = createStreamingImageDecoder();
+      let dataListener = null;
+      let screenshotTimeout = null;
       
-      // Save current timeout settings and set tripled timeouts for screenshot
-      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
-      let originalTimeouts = {
-        timeoutNormal: commsLib.timeoutNormal,
-        timeoutNewline: commsLib.timeoutNewline,
-        timeoutMax: commsLib.timeoutMax
+      Progress.show({title:"Starting screenshot",percent:0,sticky:true});
+      
+      // Set up data listener for streaming
+      dataListener = function(data) {
+        try {
+          if (decoder.processChunk(data)) {
+            const progress = decoder.getProgress();
+            Progress.show({title:`Receiving screenshot... ${progress}%`,percent:progress,sticky:true});
+            
+            if (decoder.isComplete()) {
+              // Screenshot complete
+              clearTimeout(screenshotTimeout);
+              Comms.on("data", undefined); // Remove data listener
+              
+              const url = decoder.getDataURL();
+              Progress.show({title:"Screenshot complete",percent:100,sticky:true});
+              
+              let screenshotHtml = `
+                <div style="text-align: center;">
+                  <img align="center" src="${url}"></img>
+                </div>
+              `;
+
+              showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
+                Progress.show({title:"Saving screenshot",percent:99,sticky:true});
+                let link = document.createElement("a");
+                link.download = "screenshot.png";
+                link.target = "_blank";
+                link.href = url;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                Progress.hide({sticky:true});
+              }).catch(() => {
+                Progress.hide({sticky:true}); // cancelled
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Error processing screenshot data:", err);
+          clearTimeout(screenshotTimeout);
+          Comms.on("data", undefined); // Remove data listener
+          Progress.hide({sticky:true});
+          showToast("Error processing screenshot: " + err, "error");
+        }
       };
       
-      // Set tripled timeouts for screenshot (3x default values)
-      commsLib.timeoutNormal = 40000; 
-      commsLib.timeoutNewline = 45000; 
-      commsLib.timeoutMax = 45000;
-      
-      Comms.write("\x10g.dump();\n").then((s)=>{
-        // Restore original timeout settings
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
-        
-        let oImage = new Image();
-        oImage.onload = function(){
-          Progress.show({title:"Converting screenshot",percent:90,sticky:true});
-          let oCanvas = document.createElement('canvas');
-          oCanvas.width = oImage.width;
-          oCanvas.height = oImage.height;
-          let oCtx = oCanvas.getContext('2d');
-          oCtx.drawImage(oImage, 0, 0);
-          url = oCanvas.toDataURL();
-
-          let screenshotHtml = `
-            <div style="text-align: center;">
-              <img align="center" src="${url}"></img>
-            </div>
-          `
-
-          showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
-            Progress.show({title:"Saving screenshot",percent:99,sticky:true});
-            let link = document.createElement("a");
-            link.download = "screenshot.png";
-            link.target = "_blank";
-            link.href = url;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }).catch(() => {
-            Progress.hide({sticky:true}); // cancelled
-          });
-        }
-        oImage.src = s.split("\n")[0];
+      // Set up timeout as fallback (60 seconds)
+      screenshotTimeout = setTimeout(() => {
+        Comms.on("data", undefined); // Remove data listener
         Progress.hide({sticky:true});
-        Progress.show({title:"Screenshot done",percent:85,sticky:true});
-
-      }, err=>{
-        // Restore original timeout settings in case of error
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
-        
-        showToast("Error creating screenshot: "+err,"error");
+        showToast("Screenshot timeout - please try again", "error");
+      }, 60000);
+      
+      // Start listening for data
+      Comms.on("data", dataListener);
+      
+      // Send the dump command
+      Comms.write("\x10g.dump();\n").catch(err => {
+        clearTimeout(screenshotTimeout);
+        Comms.on("data", undefined); // Remove data listener
+        Progress.hide({sticky:true});
+        showToast("Error sending screenshot command: " + err, "error");
       });
     }
   });
