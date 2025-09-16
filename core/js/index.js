@@ -1360,16 +1360,41 @@ if (btn) btn.addEventListener("click",event=>{
         timeoutMax: commsLib.timeoutMax
       };
       
-      // Set tripled timeouts for screenshot (3x default values)
-      commsLib.timeoutNormal = 900; // 3 * 300ms
-      commsLib.timeoutNewline = 30000; // 3 * 10000ms
-      commsLib.timeoutMax = 90000; // 3 * 30000ms
+      // Set extended timeouts for screenshot (4x default values to ensure complete transmission)
+      commsLib.timeoutNormal = 1200; // 4 * 300ms
+      commsLib.timeoutNewline = 40000; // 4 * 10000ms  
+      commsLib.timeoutMax = 120000; // 4 * 30000ms
       
-      Comms.write("\x10g.dump();\n").then((s)=>{
+      Comms.write("\x10g.dump();\n", {waitNewLine: true}).then((s)=>{
         // Restore original timeout settings
         commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
+        
+        // Extract the image data URL from the response
+        let imageDataUrl = s.split("\n")[0];
+        
+        // Validate that we have a complete data URL
+        if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
+          throw new Error("Invalid or incomplete image data received");
+        }
+        
+        // For base64 data URLs, ensure the string length suggests complete transmission
+        if (imageDataUrl.includes('base64,')) {
+          let base64Part = imageDataUrl.split('base64,')[1];
+          if (!base64Part || base64Part.length < 100) {
+            throw new Error("Image data appears incomplete - base64 data too short");
+          }
+          
+          // Check if base64 data ends properly (should be complete base64)
+          // Base64 strings should have length divisible by 4 when padding is included
+          let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
+          if (cleanBase64.length < 1000) { // Minimum expected size for a reasonable screenshot
+            throw new Error("Image data appears incomplete - insufficient data length");
+          }
+        }
+        
+        Progress.show({title:"Processing complete screenshot",percent:85,sticky:true});
         
         let oImage = new Image();
         oImage.onload = function(){
@@ -1400,9 +1425,13 @@ if (btn) btn.addEventListener("click",event=>{
             Progress.hide({sticky:true}); // cancelled
           });
         }
-        oImage.src = s.split("\n")[0];
-        Progress.hide({sticky:true});
-        Progress.show({title:"Screenshot done",percent:85,sticky:true});
+        
+        oImage.onerror = function(){
+          throw new Error("Failed to load screenshot image - data may be corrupted or incomplete");
+        }
+        
+        oImage.src = imageDataUrl;
+        Progress.show({title:"Screenshot captured, loading image...",percent:88,sticky:true});
 
       }, err=>{
         // Restore original timeout settings in case of error
