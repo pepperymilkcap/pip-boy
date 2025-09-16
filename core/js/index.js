@@ -1562,77 +1562,242 @@ if (btn) btn.addEventListener("click",event=>{
     if (device.id=="BANGLEJS"){
       showPrompt("Screenshot","Screenshots are not supported on Bangle.js 1",{ok:1});
     } else {
-      let decoder = createStreamingImageDecoder();
-      let dataListener = null;
-      let screenshotTimeout = null;
-      
-      Progress.show({title:"Starting screenshot",percent:0,sticky:true});
-      
-      // Set up data listener for streaming
-      dataListener = function(data) {
-        try {
-          if (decoder.processChunk(data)) {
-            const progress = decoder.getProgress();
-            Progress.show({title:`Receiving screenshot... ${progress}%`,percent:progress,sticky:true});
-            
-            if (decoder.isComplete()) {
-              // Screenshot complete
-              clearTimeout(screenshotTimeout);
-              Comms.on("data", undefined); // Remove data listener
-              
-              const url = decoder.getDataURL();
-              Progress.show({title:"Screenshot complete",percent:100,sticky:true});
-              
-              let screenshotHtml = `
-                <div style="text-align: center;">
-                  <img align="center" src="${url}"></img>
-                </div>
-              `;
+      onScreenshot();
+    }
+  });
+});
 
-              showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
-                Progress.show({title:"Saving screenshot",percent:99,sticky:true});
-                let link = document.createElement("a");
-                link.download = "screenshot.png";
-                link.target = "_blank";
-                link.href = url;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                Progress.hide({sticky:true});
-              }).catch(() => {
-                Progress.hide({sticky:true}); // cancelled
-              });
-            }
-          }
-        } catch (err) {
-          console.error("Error processing screenshot data:", err);
-          clearTimeout(screenshotTimeout);
-          Comms.on("data", undefined); // Remove data listener
-          Progress.hide({sticky:true});
-          showToast("Error processing screenshot: " + err, "error");
+// Test function to demonstrate screenshot functionality without a device
+function testScreenshotDemo() {
+  // Create some test image data to simulate streaming
+  const testImageData = "\x10\x10\x01" + // 16x16 pixels, 1 bit per pixel
+    Array(32).fill(0).map((_, i) => {
+      // Create a simple pattern
+      return String.fromCharCode((i % 2) ? 0xAA : 0x55);
+    }).join('');
+
+  onScreenshot();
+  
+  // Simulate data arriving in chunks after a short delay
+  setTimeout(() => {
+    // Find the active data listener and simulate data chunks
+    if (typeof window.testDataCallback === 'function') {
+      // Send header first
+      window.testDataCallback(testImageData.slice(0, 3));
+      
+      // Then send data in chunks
+      let offset = 3;
+      const chunkSize = 4;
+      const sendChunk = () => {
+        if (offset < testImageData.length) {
+          window.testDataCallback(testImageData.slice(offset, offset + chunkSize));
+          offset += chunkSize;
+          setTimeout(sendChunk, 200); // 200ms between chunks to show progressive rendering
         }
       };
+      setTimeout(sendChunk, 500);
+    }
+  }, 100);
+}
+
+// Add test button for demonstration (only in development)
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  document.addEventListener('DOMContentLoaded', function() {
+    // Find the utilities section and add a test button
+    const utilitiesSection = document.querySelector('#morecontainer h3');
+    if (utilitiesSection && utilitiesSection.textContent.includes('Utilities')) {
+      const testButton = document.createElement('button');
+      testButton.className = 'btn tooltip';
+      testButton.textContent = 'Test Screenshot Demo';
+      testButton.setAttribute('data-tooltip', 'Demo screenshot functionality without device');
+      testButton.addEventListener('click', testScreenshotDemo);
       
-      // Set up timeout as fallback (60 seconds)
-      screenshotTimeout = setTimeout(() => {
-        Comms.on("data", undefined); // Remove data listener
-        Progress.hide({sticky:true});
-        showToast("Screenshot timeout - please try again", "error");
-      }, 60000);
-      
-      // Start listening for data
+      const parentP = utilitiesSection.nextElementSibling;
+      if (parentP) {
+        parentP.appendChild(document.createTextNode(' '));
+        parentP.appendChild(testButton);
+      }
+    }
+  });
+}
+
+// Screenshot implementation with immediate window display and progressive rendering
+function onScreenshot() {
+  let decoder = createStreamingImageDecoder();
+  let dataListener = null;
+  let screenshotTimeout = null;
+  let modal = null;
+  let canvasContainer = null;
+  let progressText = null;
+  
+  // Create and show the modal immediately
+  modal = htmlElement(`<div class="modal active">
+    <div class="modal-overlay"></div>
+    <div class="modal-container" style="max-width: 600px;">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close"></a>
+        <div class="modal-title h5">Screenshot</div>
+      </div>
+      <div class="modal-body">
+        <div class="content" style="text-align: center;">
+          <div id="screenshot-progress" style="margin-bottom: 10px; font-weight: bold;">Starting screenshot...</div>
+          <div id="screenshot-canvas-container" style="display: inline-block; border: 2px solid #ccc; background-color: #f5f5f5; min-width: 176px; min-height: 176px; position: relative;">
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #999;">
+              Waiting for data...
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="save-screenshot" disabled>Save Screenshot</button>
+        <button class="btn" id="cancel-screenshot">Cancel</button>
+      </div>
+    </div>
+  </div>`);
+  
+  document.body.append(modal);
+  canvasContainer = modal.querySelector('#screenshot-canvas-container');
+  progressText = modal.querySelector('#screenshot-progress');
+  
+  // Handle modal close/cancel
+  function cleanup() {
+    clearTimeout(screenshotTimeout);
+    if (dataListener) {
+      try {
+        if (Comms.isConnected()) {
+          Comms.on("data", undefined);
+        }
+      } catch (err) {
+        // Ignore errors when no device is connected
+        console.log("No device to disconnect from");
+      }
+      dataListener = null;
+      window.testDataCallback = null; // Clear test callback
+    }
+    if (modal) {
+      modal.remove();
+      modal = null;
+    }
+  }
+  
+  modal.querySelector("a[href='#close']").addEventListener("click", event => {
+    event.preventDefault();
+    cleanup();
+  });
+  
+  modal.querySelector("#cancel-screenshot").addEventListener("click", event => {
+    event.preventDefault();
+    cleanup();
+  });
+  
+  modal.querySelector("#save-screenshot").addEventListener("click", event => {
+    event.preventDefault();
+    if (decoder.canvas) {
+      const url = decoder.getDataURL();
+      let link = document.createElement("a");
+      link.download = "screenshot.png";
+      link.target = "_blank";
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("Screenshot saved!", "success");
+    }
+    cleanup();
+  });
+  
+  // Set up data listener for streaming
+  dataListener = function(data) {
+    try {
+      if (decoder.processChunk(data)) {
+        const progress = decoder.getProgress();
+        
+        // Update progress text
+        if (progressText) {
+          if (progress === 0) {
+            progressText.textContent = "Receiving screenshot...";
+          } else {
+            progressText.textContent = `Receiving screenshot... ${progress}%`;
+          }
+        }
+        
+        // If we have a canvas from the decoder, replace the placeholder
+        if (decoder.canvas && canvasContainer) {
+          // Clear container and add canvas
+          canvasContainer.innerHTML = '';
+          canvasContainer.appendChild(decoder.canvas);
+          
+          // Style the canvas
+          decoder.canvas.style.maxWidth = '100%';
+          decoder.canvas.style.height = 'auto';
+          decoder.canvas.style.border = '1px solid #ddd';
+        }
+        
+        if (decoder.isComplete()) {
+          // Screenshot complete
+          clearTimeout(screenshotTimeout);
+          
+          if (progressText) {
+            progressText.textContent = "Screenshot complete!";
+          }
+          
+          // Enable save button
+          const saveBtn = modal.querySelector("#save-screenshot");
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.focus(); // Focus the save button for easy saving
+          }
+          
+          // Remove data listener but keep modal open
+          if (dataListener) {
+            try {
+              if (Comms.isConnected()) {
+                Comms.on("data", undefined);
+              }
+            } catch (err) {
+              // Ignore errors when no device is connected
+              console.log("No device to disconnect from");
+            }
+            dataListener = null;
+            window.testDataCallback = null; // Clear test callback
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error processing screenshot data:", err);
+      cleanup();
+      showToast("Error processing screenshot: " + err, "error");
+    }
+  };
+  
+  // Set up timeout as fallback (60 seconds)
+  screenshotTimeout = setTimeout(() => {
+    cleanup();
+    showToast("Screenshot timeout - please try again", "error");
+  }, 60000);
+  
+  // For testing, expose the data listener as a global function
+  window.testDataCallback = dataListener;
+  
+  // Start listening for data
+  try {
+    if (Comms.isConnected()) {
       Comms.on("data", dataListener);
       
       // Send the dump command
       Comms.write("\x10g.dump();\n").catch(err => {
-        clearTimeout(screenshotTimeout);
-        Comms.on("data", undefined); // Remove data listener
-        Progress.hide({sticky:true});
+        cleanup();
         showToast("Error sending screenshot command: " + err, "error");
       });
+    } else {
+      // No device connected - demo mode will handle data simulation
+      console.log("No device connected - demo mode available");
     }
-  });
-});
+  } catch (err) {
+    // If no device connected, we'll rely on the test function for demo
+    console.log("No device connected - demo mode available");
+  }
+}
 
 // Upload files button
 btn = document.getElementById("uploadfiles");
