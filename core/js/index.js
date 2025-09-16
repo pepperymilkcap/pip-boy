@@ -1371,38 +1371,38 @@ if (btn) btn.addEventListener("click",event=>{
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
-        let oImage = new Image();
-        oImage.onload = function(){
-          Progress.show({title:"Converting screenshot",percent:90,sticky:true});
-          let oCanvas = document.createElement('canvas');
-          oCanvas.width = oImage.width;
-          oCanvas.height = oImage.height;
-          let oCtx = oCanvas.getContext('2d');
-          oCtx.drawImage(oImage, 0, 0);
-          url = oCanvas.toDataURL();
-
-          let screenshotHtml = `
-            <div style="text-align: center;">
-              <img align="center" src="${url}"></img>
-            </div>
-          `
-
-          showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
-            Progress.show({title:"Saving screenshot",percent:99,sticky:true});
-            let link = document.createElement("a");
-            link.download = "screenshot.png";
-            link.target = "_blank";
-            link.href = url;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }).catch(()=>{
-          }).finally(()=>{
-            Progress.hide({sticky:true});
-          });
+        Progress.show({title:"Converting screenshot",percent:90,sticky:true});
+        
+        // Convert raw Espruino image data to data URL
+        let imageData = s.split("\n")[0];
+        url = imageconverter.stringToImageURL(imageData);
+        
+        if (!url) {
+          showToast("Error: Unable to convert screenshot data", "error");
+          Progress.hide({sticky:true});
+          return;
         }
-        oImage.src = s.split("\n")[0];
-        Progress.hide({sticky:true});
+
+        let screenshotHtml = `
+          <div style="text-align: center;">
+            <img align="center" src="${url}"></img>
+          </div>
+        `
+
+        showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
+          Progress.show({title:"Saving screenshot",percent:99,sticky:true});
+          let link = document.createElement("a");
+          link.download = "screenshot.png";
+          link.target = "_blank";
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }).catch(()=>{
+        }).finally(()=>{
+          Progress.hide({sticky:true});
+        });
+        
         Progress.show({title:"Screenshot done",percent:85,sticky:true});
 
       }, err=>{
