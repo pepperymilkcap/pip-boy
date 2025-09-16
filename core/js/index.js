@@ -1353,83 +1353,67 @@ if (btn) btn.addEventListener("click",event=>{
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
       
-      // Save current timeout settings and set tripled timeouts for screenshot
-      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
-      let originalTimeouts = {
-        timeoutNormal: commsLib.timeoutNormal,
-        timeoutNewline: commsLib.timeoutNewline,
-        timeoutMax: commsLib.timeoutMax
-      };
+      console.log("Starting screenshot capture with prompt-based detection method");
       
-      // Set extended timeouts for screenshot to handle large data streams with potential pauses
-      // g.dump() can send data in chunks with significant pauses between chunks
-      commsLib.timeoutNormal = 15000; // 15 seconds after last data received (increased from 5s)
-      commsLib.timeoutNewline = 60000; // 60 seconds total for newline-based wait (not used)
-      commsLib.timeoutMax = 300000; // 5 minutes maximum total time (increased from 3m)
-      
-      // Use waitNewLine: false to avoid timing out on long continuous data streams
-      // g.dump() outputs the complete image data as one continuous stream without intermediate newlines
-      console.log("Starting screenshot capture with extended timeouts: normal=" + commsLib.timeoutNormal + "ms, max=" + commsLib.timeoutMax + "ms");
-      
-      // Function to capture screenshot with retry logic
-      function captureScreenshotWithRetry(maxRetries = 3, currentRetry = 0) {
-        console.log("Screenshot attempt " + (currentRetry + 1) + " of " + maxRetries);
+      // Function to capture screenshot using prompt-based detection
+      function captureScreenshotWithPromptDetection() {
+        console.log("Starting screenshot capture with prompt-based detection");
         
-        return Comms.write("\x10g.dump();\n", {waitNewLine: false}).then((s) => {
-          console.log("Screenshot data received, length: " + s.length + " characters");
+        return new Promise((resolve, reject) => {
+          let buffer = "";
+          let connection = Comms.getConnection();
+          let originalCb = connection.cb;
+          let startTime = Date.now();
+          let maxWaitTime = 120000; // 2 minutes absolute maximum
           
-          // Try to extract and validate the image data
-          let imageDataUrl = "";
-          let lines = s.split("\n");
-          
-          // Look for the data URL in the response - it should start with "data:image/"
-          for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('data:image/')) {
-              imageDataUrl = line;
-              break;
+          // Set up data handler to buffer incoming data
+          connection.cb = function(data) {
+            // Call original callback to maintain normal operation
+            if (originalCb) originalCb(data);
+            
+            buffer += data;
+            console.log("Screenshot: received " + data.length + " chars, buffer now " + buffer.length + " chars");
+            
+            // Check for Espruino prompt indicating command completion
+            if (buffer.includes('>\n') || buffer.endsWith('>')) {
+              console.log("Screenshot: Espruino prompt detected, data transfer complete");
+              connection.cb = originalCb; // Restore original callback
+              
+              // Extract the response before the prompt
+              let promptIndex = buffer.lastIndexOf('>');
+              let response = buffer.substring(0, promptIndex).trim();
+              resolve(response);
+              return;
             }
-          }
-          
-          // If no data URL found in lines, the whole response might be the data URL
-          if (!imageDataUrl && s.trim().startsWith('data:image/')) {
-            imageDataUrl = s.trim();
-          }
-          
-          // Validate if we have a reasonable looking data URL
-          if (imageDataUrl && imageDataUrl.includes('base64,')) {
-            let base64Part = imageDataUrl.split('base64,')[1];
-            if (base64Part && base64Part.length > 1000) {
-              let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
-              if (cleanBase64.length > 5000) { // Reasonable minimum size for a screenshot
-                console.log("Screenshot appears complete on attempt " + (currentRetry + 1));
-                return s; // Return the successful result
-              }
+            
+            // Safety timeout to prevent hanging
+            if (Date.now() - startTime > maxWaitTime) {
+              console.warn("Screenshot: Maximum wait time exceeded, returning buffered data");
+              connection.cb = originalCb; // Restore original callback
+              resolve(buffer);
+              return;
             }
-          }
+          };
           
-          // If we get here, the data appears incomplete
-          console.warn("Screenshot data appears incomplete on attempt " + (currentRetry + 1) + 
-                      ", received " + (imageDataUrl ? "data URL with " + (imageDataUrl.split('base64,')[1]?.length || 0) + " base64 chars" : "no valid data URL"));
+          // Send the g.dump() command
+          console.log("Screenshot: Sending g.dump() command");
+          connection.write("\x10g.dump();\n", () => {
+            console.log("Screenshot: Command sent, waiting for data and prompt...");
+          });
           
-          if (currentRetry < maxRetries - 1) {
-            // Wait a bit and retry
-            console.log("Retrying screenshot capture in 2 seconds...");
-            return new Promise(resolve => setTimeout(resolve, 2000))
-              .then(() => captureScreenshotWithRetry(maxRetries, currentRetry + 1));
-          } else {
-            // All retries exhausted, return what we have
-            console.error("All screenshot retry attempts exhausted, proceeding with possibly incomplete data");
-            return s;
-          }
+          // Set a safety timeout in case something goes wrong
+          setTimeout(() => {
+            if (connection.cb !== originalCb) {
+              console.error("Screenshot: Safety timeout reached, restoring callback and rejecting");
+              connection.cb = originalCb;
+              reject(new Error("Screenshot capture timed out after " + (maxWaitTime/1000) + " seconds"));
+            }
+          }, maxWaitTime + 1000);
         });
       }
       
-      captureScreenshotWithRetry().then((s)=>{
-        // Restore original timeout settings
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
+      captureScreenshotWithPromptDetection().then((s)=>{
+        console.log("Screenshot data captured successfully, length: " + s.length + " characters");
         
         // Extract the image data URL from the response
         // g.dump() may return response with echo, command, and data - find the data URL
@@ -1526,11 +1510,6 @@ if (btn) btn.addEventListener("click",event=>{
         oImage.src = imageDataUrl;
 
       }, err=>{
-        // Restore original timeout settings in case of error
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
-        
         Progress.hide({sticky:true}); // Hide progress on communication error
         showToast("Error creating screenshot: "+err,"error");
       });
