@@ -1432,6 +1432,7 @@ function createStreamingImageDecoder() {
     nibits: 0,
     nidata: 0,
     dataStartIndex: 0,
+    bytesRead: 0, // Track bytes consumed from data section
 
     // Process incoming data chunk
     processChunk: function(data) {
@@ -1490,16 +1491,16 @@ function createStreamingImageDecoder() {
     renderPixels: function() {
       if (!this.headerParsed) return;
 
-      const availableDataLength = this.buffer.length - this.dataStartIndex;
       const totalPixels = this.width * this.height;
-      let p = this.dataStartIndex;
+      let p = this.dataStartIndex + this.bytesRead;
 
       // Continue from where we left off
-      while (this.pixelIndex < totalPixels && p < this.buffer.length) {
+      while (this.pixelIndex < totalPixels) {
         // Accumulate bits for this pixel
         while (this.nibits < this.bpp && p < this.buffer.length) {
           this.nidata = (this.nidata << 8) | (this.buffer.charCodeAt(p++) & 0xFF);
           this.nibits += 8;
+          this.bytesRead = p - this.dataStartIndex;
         }
 
         if (this.nibits >= this.bpp) {
