@@ -1,4 +1,3 @@
-
 let appJSON = []; // List of apps and info from apps.json
 let appSortInfo = {}; // list of data to sort by, from appdates.csv { created, modified }
 let appCounts = {};
@@ -1353,139 +1352,24 @@ if (btn) btn.addEventListener("click",event=>{
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
       
-      console.log("Starting screenshot capture with prompt-based detection method");
+      // Save current timeout settings and set tripled timeouts for screenshot
+      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
+      let originalTimeouts = {
+        timeoutNormal: commsLib.timeoutNormal,
+        timeoutNewline: commsLib.timeoutNewline,
+        timeoutMax: commsLib.timeoutMax
+      };
       
-      // Function to capture screenshot using prompt-based detection
-      function captureScreenshotWithPromptDetection() {
-        console.log("Starting screenshot capture with prompt-based detection");
-        
-        return new Promise((resolve, reject) => {
-          let buffer = "";
-          let startTime = Date.now();
-          let maxWaitTime = 30000; // 30 seconds should be sufficient for g.dump()
-          let dataListener;
-          let timeoutId;
-          
-          // Clean up function to remove listener and clear timeout
-          function cleanup() {
-            if (dataListener) {
-              console.log("Screenshot: Cleaning up data listener");
-              Comms.on("data"); // Remove the listener by calling with no callback
-              dataListener = null;
-            }
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              timeoutId = null;
-            }
-          }
-          
-          // Set up data listener to buffer incoming data
-          dataListener = function(data) {
-            buffer += data;
-            console.log("Screenshot: received " + data.length + " chars, buffer now " + buffer.length + " chars");
-            
-            // Check for Espruino prompt indicating command completion
-            if (buffer.includes('>\n') || buffer.endsWith('>')) {
-              console.log("Screenshot: Espruino prompt detected, data transfer complete");
-              cleanup();
-              
-              // Extract the response before the prompt
-              let promptIndex = buffer.lastIndexOf('>');
-              let response = buffer.substring(0, promptIndex).trim();
-              resolve(response);
-              return;
-            }
-            
-            // Safety timeout to prevent hanging
-            if (Date.now() - startTime > maxWaitTime) {
-              console.warn("Screenshot: Maximum wait time exceeded, returning buffered data");
-              cleanup();
-              resolve(buffer);
-              return;
-            }
-          };
-          
-          // Add the data listener using the proper Comms API
-          Comms.on("data", dataListener);
-          console.log("Screenshot: Added data listener for prompt detection");
-          
-          // Send the g.dump() command
-          console.log("Screenshot: Sending g.dump() command");
-          Comms.write("\x10g.dump();\n").then(() => {
-            console.log("Screenshot: Command sent, waiting for data and prompt...");
-          }).catch((error) => {
-            console.error("Screenshot: Error sending command:", error);
-            cleanup();
-            reject(error);
-          });
-          
-          // Set a safety timeout in case something goes wrong
-          timeoutId = setTimeout(() => {
-            console.error("Screenshot: Safety timeout reached, cleaning up and rejecting");
-            cleanup();
-            reject(new Error("Screenshot capture timed out after " + (maxWaitTime/1000) + " seconds"));
-          }, maxWaitTime + 1000);
-        });
-      }
+      // Set tripled timeouts for screenshot (3x default values)
+      commsLib.timeoutNormal = 900; // 3 * 300ms
+      commsLib.timeoutNewline = 30000; // 3 * 10000ms
+      commsLib.timeoutMax = 90000; // 3 * 30000ms
       
-      captureScreenshotWithPromptDetection().then((s)=>{
-        console.log("Screenshot data captured successfully, length: " + s.length + " characters");
-        
-        // Extract the image data URL from the response
-        // g.dump() may return response with echo, command, and data - find the data URL
-        let imageDataUrl = "";
-        let lines = s.split("\n");
-        
-        // Look for the data URL in the response - it should start with "data:image/"
-        for (let line of lines) {
-          line = line.trim();
-          if (line.startsWith('data:image/')) {
-            imageDataUrl = line;
-            break;
-          }
-        }
-        
-        // If no data URL found in lines, the whole response might be the data URL
-        if (!imageDataUrl && s.trim().startsWith('data:image/')) {
-          imageDataUrl = s.trim();
-        }
-        
-        // Validate that we have a complete data URL
-        if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
-          throw new Error("Invalid or incomplete image data received. Response: " + s.substring(0, 200) + "...");
-        }
-        
-        // For base64 data URLs, ensure the string length suggests complete transmission
-        if (imageDataUrl.includes('base64,')) {
-          let base64Part = imageDataUrl.split('base64,')[1];
-          if (!base64Part || base64Part.length < 100) {
-            throw new Error("Image data appears incomplete - base64 data too short: " + base64Part?.length + " chars");
-          }
-          
-          // Check if base64 data ends properly (should be complete base64)
-          // Base64 strings should have length divisible by 4 when padding is included
-          let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
-          if (cleanBase64.length < 1000) { // Minimum expected size for a reasonable screenshot
-            throw new Error("Image data appears incomplete - insufficient data length: " + cleanBase64.length + " chars");
-          }
-          
-          // Additional validation: check if base64 ends with proper padding or is properly formed
-          if (cleanBase64.length % 4 !== 0 && !cleanBase64.endsWith('=') && !cleanBase64.endsWith('==')) {
-            console.warn("Warning: Base64 data may be incomplete - not properly padded. Length: " + cleanBase64.length);
-            // Don't throw error yet, as some valid base64 might not need padding
-          }
-          
-          // Check if the data URL appears to be cut off in the middle
-          let lastChars = imageDataUrl.slice(-20); // Get last 20 characters
-          if (lastChars.includes('\n') || lastChars.includes(' ') || lastChars.includes('\t')) {
-            console.warn("Warning: Image data URL appears to end with whitespace, may be incomplete");
-          }
-          
-          // Log success for debugging
-          console.log("Screenshot data received successfully: " + cleanBase64.length + " base64 characters");
-        }
-        
-        Progress.show({title:"Screenshot captured, loading image...",percent:88,sticky:true});
+      Comms.write("\x10g.dump();\n").then((s)=>{
+        // Restore original timeout settings
+        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+        commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
         let oImage = new Image();
         oImage.onload = function(){
@@ -1512,28 +1396,23 @@ if (btn) btn.addEventListener("click",event=>{
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            Progress.hide({sticky:true}); // Hide progress after download completes
           }).catch(() => {
             Progress.hide({sticky:true}); // cancelled
           });
         }
-        
-        oImage.onerror = function(){
-          Progress.hide({sticky:true}); // Hide progress on error
-          showToast("Failed to load screenshot image - data may be corrupted or incomplete", "error");
-        }
-        
-        oImage.src = imageDataUrl;
+        oImage.src = s.split("\n")[0];
+        Progress.hide({sticky:true});
+        Progress.show({title:"Screenshot done",percent:85,sticky:true});
 
       }, err=>{
-        Progress.hide({sticky:true}); // Hide progress on communication error
+        // Restore original timeout settings in case of error
+        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+        commsLib.timeoutMax = originalTimeouts.timeoutMax;
+        
         showToast("Error creating screenshot: "+err,"error");
       });
     }
-  }).catch(err => {
-    // Handle error from getInstalledApps - device connection failed
-    Progress.hide({sticky:true}); // Hide the "Getting device info..." progress
-    showToast("Device connection failed, cannot take screenshot: "+err,"error");
   });
 });
 
