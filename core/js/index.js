@@ -1361,23 +1361,33 @@ if (btn) btn.addEventListener("click",event=>{
         
         return new Promise((resolve, reject) => {
           let buffer = "";
-          let connection = Comms.getConnection();
-          let originalCb = connection.cb;
           let startTime = Date.now();
-          let maxWaitTime = 120000; // 2 minutes absolute maximum
+          let maxWaitTime = 30000; // 30 seconds should be sufficient for g.dump()
+          let dataListener;
+          let timeoutId;
           
-          // Set up data handler to buffer incoming data
-          connection.cb = function(data) {
-            // Call original callback to maintain normal operation
-            if (originalCb) originalCb(data);
-            
+          // Clean up function to remove listener and clear timeout
+          function cleanup() {
+            if (dataListener) {
+              console.log("Screenshot: Cleaning up data listener");
+              Comms.on("data"); // Remove the listener by calling with no callback
+              dataListener = null;
+            }
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+          }
+          
+          // Set up data listener to buffer incoming data
+          dataListener = function(data) {
             buffer += data;
             console.log("Screenshot: received " + data.length + " chars, buffer now " + buffer.length + " chars");
             
             // Check for Espruino prompt indicating command completion
             if (buffer.includes('>\n') || buffer.endsWith('>')) {
               console.log("Screenshot: Espruino prompt detected, data transfer complete");
-              connection.cb = originalCb; // Restore original callback
+              cleanup();
               
               // Extract the response before the prompt
               let promptIndex = buffer.lastIndexOf('>');
@@ -1389,25 +1399,31 @@ if (btn) btn.addEventListener("click",event=>{
             // Safety timeout to prevent hanging
             if (Date.now() - startTime > maxWaitTime) {
               console.warn("Screenshot: Maximum wait time exceeded, returning buffered data");
-              connection.cb = originalCb; // Restore original callback
+              cleanup();
               resolve(buffer);
               return;
             }
           };
           
+          // Add the data listener using the proper Comms API
+          Comms.on("data", dataListener);
+          console.log("Screenshot: Added data listener for prompt detection");
+          
           // Send the g.dump() command
           console.log("Screenshot: Sending g.dump() command");
-          connection.write("\x10g.dump();\n", () => {
+          Comms.write("\x10g.dump();\n").then(() => {
             console.log("Screenshot: Command sent, waiting for data and prompt...");
+          }).catch((error) => {
+            console.error("Screenshot: Error sending command:", error);
+            cleanup();
+            reject(error);
           });
           
           // Set a safety timeout in case something goes wrong
-          setTimeout(() => {
-            if (connection.cb !== originalCb) {
-              console.error("Screenshot: Safety timeout reached, restoring callback and rejecting");
-              connection.cb = originalCb;
-              reject(new Error("Screenshot capture timed out after " + (maxWaitTime/1000) + " seconds"));
-            }
+          timeoutId = setTimeout(() => {
+            console.error("Screenshot: Safety timeout reached, cleaning up and rejecting");
+            cleanup();
+            reject(new Error("Screenshot capture timed out after " + (maxWaitTime/1000) + " seconds"));
           }, maxWaitTime + 1000);
         });
       }
