@@ -1,0 +1,328 @@
+if (Pip.removeSubmenu) Pip.removeSubmenu();
+delete Pip.removeSubmenu;
+if (Pip.remove) Pip.remove();
+delete Pip.remove;
+
+var G = Graphics.createArrayBuffer(400, 308, 2, {
+  msb: true,
+  buffer: E.toArrayBuffer(E.memoryArea(0x10000000 + 16384, (400 * 308) >> 2))
+});
+G.flip = function() { return Pip.blitImage(G, 40, 7); };
+
+var wavFiles = [];
+var allFiles = [];
+var errorMsg = "";
+var playMsgLines = [];
+try {
+  allFiles = require("fs").readdirSync("/ALARM");
+  wavFiles = allFiles.filter(function(f) { return f.toLowerCase().endsWith(".wav"); });
+} catch (e) {
+  errorMsg = "ERROR: " + e;
+  wavFiles = [];
+}
+
+var selected = 0;
+var currentPage = 0;
+var LEFT_MARGIN = 30;
+var TOP_MARGIN = 40;
+var LINE_HEIGHT = 30;
+var DEBUG_LINES = 4;
+var FILES_PER_PAGE = 6; // Maximum files to show per page
+var statusTimeout = null; // For auto-clearing status messages
+
+// PipBoy-style UI constants
+var HEADER_HEIGHT = 35;
+var BORDER_THICKNESS = 2;
+
+function drawMenu() {
+  // Clear screen with black background
+  G.clear(0);
+  
+  // Draw PipBoy-style header
+  G.setColor(1).setFont("Vector", 28);
+  var headerText = "Audio Player";
+  var headerWidth = G.stringWidth(headerText);
+  var headerX = Math.floor((G.getWidth() - headerWidth) / 2);
+  G.drawString(headerText, headerX, 15);
+  
+  // Draw header underline - made thicker and positioned to avoid overlap
+  G.setColor(1).fillRect(LEFT_MARGIN, HEADER_HEIGHT + 2, G.getWidth() - LEFT_MARGIN, HEADER_HEIGHT + 5);
+  
+  var y = HEADER_HEIGHT + 20;
+  
+  // Debug output is now hidden for cleaner UI
+  var showDebug = false; // Always hide debug output for professional appearance
+  if (showDebug) {
+    G.setColor(1);
+    G.setFont("Vector", 16);
+    G.drawString("DEBUG: /ALARM files", LEFT_MARGIN, y);
+    y += 18;
+    if (errorMsg) {
+      G.drawString(errorMsg, LEFT_MARGIN, y);
+      y += 18;
+    } else {
+      allFiles.slice(0, DEBUG_LINES).forEach(function(file, idx) {
+        G.drawString((idx + 1) + ": " + file, LEFT_MARGIN, y);
+        y += 18;
+      });
+    }
+  }
+
+  G.setFont("Vector", 20);
+  y = TOP_MARGIN; // Start from top margin since debug is hidden
+  
+  if (!wavFiles.length) {
+    G.setColor(1);
+    var noFilesText = "NO WAV FILES FOUND";
+    var noFilesWidth = G.stringWidth(noFilesText);
+    var noFilesX = Math.floor((G.getWidth() - noFilesWidth) / 2);
+    G.drawString(noFilesText, noFilesX, G.getHeight() / 2);
+    
+    // Draw error box
+    G.setColor(1).drawRect(LEFT_MARGIN, G.getHeight() / 2 - 20, G.getWidth() - LEFT_MARGIN, G.getHeight() / 2 + 40);
+    
+    G.flip();
+    return;
+  }
+
+  // Calculate pagination
+  var totalPages = Math.ceil(wavFiles.length / FILES_PER_PAGE);
+  var startIndex = currentPage * FILES_PER_PAGE;
+  var endIndex = Math.min(startIndex + FILES_PER_PAGE, wavFiles.length);
+  var filesOnPage = wavFiles.slice(startIndex, endIndex);
+
+  // Display page info if there are multiple pages
+  if (totalPages > 1) {
+    G.setFont("Vector", 16);
+    G.setColor(1);
+    var pageInfo = "PAGE " + (currentPage + 1) + "/" + totalPages;
+    var pageInfoWidth = G.stringWidth(pageInfo);
+    G.drawString(pageInfo, G.getWidth() - pageInfoWidth - LEFT_MARGIN, y);
+    y += 25;
+  }
+  
+  G.setFont("Vector", 20);
+
+  // Draw file list with improved styling
+  filesOnPage.forEach(function(name, i) {
+    var actualIndex = startIndex + i;
+    var rowY = y + i * LINE_HEIGHT;
+    
+    if (actualIndex === selected) {
+      // Draw selection highlight with PipBoy-style border
+      G.setColor(1).fillRect(LEFT_MARGIN - 5, rowY - 5, G.getWidth() - LEFT_MARGIN + 5, rowY + 25);
+      G.setColor(0).fillRect(LEFT_MARGIN - 3, rowY - 3, G.getWidth() - LEFT_MARGIN + 3, rowY + 23);
+      G.setColor(1);
+      
+      // Add selection indicator arrow
+      G.drawString(">", LEFT_MARGIN - 20, rowY);
+    } else {
+      G.setColor(1);
+    }
+    
+    // Truncate long filenames to fit screen
+    var displayName = name;
+    if (G.stringWidth(displayName) > G.getWidth() - LEFT_MARGIN - 40) {
+      while (G.stringWidth(displayName + "...") > G.getWidth() - LEFT_MARGIN - 40 && displayName.length > 0) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += "...";
+    }
+    
+    G.drawString(displayName, LEFT_MARGIN, rowY);
+  });
+
+  // Draw status/error dialog with enhanced PipBoy styling
+  if (playMsgLines.length) {
+    var boxWidth = 360;
+    var boxHeight = 20 * Math.min(6, playMsgLines.length) + 30;
+    var boxX = Math.floor((G.getWidth() - boxWidth) / 2);
+    var boxY = Math.floor((G.getHeight() - boxHeight) / 2);
+
+    // Draw outer border (PipBoy style)
+    G.setColor(1).fillRect(boxX - 3, boxY - 3, boxX + boxWidth + 3, boxY + boxHeight + 3);
+    
+    // Draw inner black background
+    G.setColor(0).fillRect(boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+    
+    // Add success/error indicator border
+    var hasSuccess = playMsgLines.some(function(line) { return line.includes("✓") || line.includes("SUCCESS"); });
+    var hasError = playMsgLines.some(function(line) { return line.includes("⚠") || line.includes("failed"); });
+    
+    if (hasSuccess) {
+      // Green-tinted border for success
+      G.setColor(1).drawRect(boxX + 2, boxY + 2, boxX + boxWidth - 2, boxY + boxHeight - 2);
+    } else if (hasError) {
+      // Draw dashed border for errors
+      for (var j = 0; j < boxWidth - 4; j += 8) {
+        G.setColor(1).fillRect(boxX + 2 + j, boxY + 2, boxX + 6 + j, boxY + 4);
+        G.setColor(1).fillRect(boxX + 2 + j, boxY + boxHeight - 4, boxX + 6 + j, boxY + boxHeight - 2);
+      }
+    }
+
+    G.setFont("Vector", 16);
+    G.setColor(1);
+    for (var i = 0; i < Math.min(6, playMsgLines.length); i++) {
+      var line = playMsgLines[i];
+      var textWidth = G.stringWidth(line);
+      var lineX = boxX + Math.floor((boxWidth - textWidth) / 2);
+      var lineY = boxY + 20 + i * 20;
+      G.drawString(line, lineX, lineY);
+    }
+  }
+  
+  // Draw footer with controls information
+  G.setFont("Vector", 16);
+  G.setColor(1);
+  var footerY = G.getHeight() - 25;
+  G.drawString("Rotary Knob: SEL  Thumb Wheel: PAGE  Rotary Button: PLAY", LEFT_MARGIN, footerY);
+
+  G.flip();
+}
+
+function onKnob(dir) {
+  if (!wavFiles.length) return;
+  
+  // Calculate current page for selected item
+  var currentSelectedPage = Math.floor(selected / FILES_PER_PAGE);
+  
+  // Move selection
+  var newSelected = Math.max(0, Math.min(wavFiles.length - 1, selected - dir));
+  var newSelectedPage = Math.floor(newSelected / FILES_PER_PAGE);
+  
+  // Update page if selection moved to different page
+  if (newSelectedPage !== currentPage) {
+    currentPage = newSelectedPage;
+  }
+  
+  selected = newSelected;
+  needsRedraw = true; // Mark that screen needs updating
+}
+Pip.on("knob1", onKnob);
+
+function onPageKnob(dir) {
+  if (!wavFiles.length) return;
+  
+  var totalPages = Math.ceil(wavFiles.length / FILES_PER_PAGE);
+  var newPage = Math.max(0, Math.min(totalPages - 1, currentPage - dir));
+  
+  if (newPage !== currentPage) {
+    currentPage = newPage;
+    
+    // Adjust selection to stay within current page
+    var pageStart = currentPage * FILES_PER_PAGE;
+    var pageEnd = Math.min(pageStart + FILES_PER_PAGE - 1, wavFiles.length - 1);
+    
+    // If current selection is not on this page, move it to the first item of the page
+    if (selected < pageStart || selected > pageEnd) {
+      selected = pageStart;
+    }
+    
+    needsRedraw = true;
+  }
+}
+Pip.on("knob2", onPageKnob);
+
+// --- Improved button logic ---
+var lastBtnState = false;
+var debounceFrames = 5; // Reduced debounce time for more responsive interface
+var debounceCounter = 0;
+var needsRedraw = true; // Track when screen needs updating
+
+function frameLoop() {
+  var btnState = typeof KNOB1_BTN !== "undefined" && KNOB1_BTN.read();
+
+  if (debounceCounter < debounceFrames) {
+    debounceCounter++;
+  } else {
+    // Only trigger on rising edge (button pressed)
+    if (btnState && !lastBtnState) {
+      playSelected();
+      needsRedraw = true; // Force redraw after button press
+    }
+  }
+  lastBtnState = btnState;
+
+  // Only redraw when necessary
+  if (needsRedraw) {
+    drawMenu();
+    needsRedraw = false;
+  }
+}
+var frameInterval = setInterval(frameLoop, 100); // Reduced frequency from 50ms to 100ms
+
+function playSelected() {
+  if (!wavFiles.length) return;
+  if (selected < 0 || selected >= wavFiles.length) return; // Add bounds check
+  var filename = wavFiles[selected];
+  var fullPath = "/ALARM/" + filename;
+  var results = [];
+  results.push("♪ PLAYING: " + filename.toUpperCase()); // Enhanced message style
+
+  // Try audio methods sequentially - stop on first success
+  var audioPlayed = false;
+
+  // 1. Try Pip.audioStart(fullPath) first
+  if (!audioPlayed) {
+    try {
+      Pip.audioStart(fullPath);
+      results.push("✓ AUDIO PLAYBACK STARTED");
+      audioPlayed = true;
+    } catch (e) {
+      results.push("× METHOD 1 FAILED");
+    }
+  }
+
+  // 2. Try Pip.audioStartVar(fullPath) if first method failed
+  if (!audioPlayed) {
+    try {
+      Pip.audioStartVar(fullPath);
+      results.push("✓ AUDIO PLAYBACK STARTED");
+      audioPlayed = true;
+    } catch (e) {
+      results.push("× METHOD 2 FAILED");
+    }
+  }
+
+  // 3. Try Pip.audioStartVar(buffer) if previous methods failed
+  if (!audioPlayed) {
+    try {
+      var wavBuffer = require("fs").readFileSync(fullPath);
+      if (wavBuffer && wavBuffer.length) {
+        Pip.audioStartVar(wavBuffer);
+        results.push("✓ AUDIO PLAYBACK STARTED");
+        audioPlayed = true;
+      } else {
+        results.push("× FILE READ FAILED");
+      }
+    } catch (e) {
+      results.push("× METHOD 3 FAILED");
+    }
+  }
+
+  // No fallback audio to avoid interrupting other sounds
+
+  if (!audioPlayed) {
+    results.push("⚠ UNABLE TO PLAY FILE");
+    results.push("CHECK FILE FORMAT");
+  }
+
+  playMsgLines = results;
+  drawMenu(); // Immediately update display to show status
+  
+  // Clear status messages after 4 seconds (longer for better readability)
+  if (statusTimeout) clearTimeout(statusTimeout);
+  statusTimeout = setTimeout(function() {
+    playMsgLines = [];
+    needsRedraw = true;
+  }, 4000);
+}
+
+Pip.remove = function () {
+  clearInterval(frameInterval);
+  if (statusTimeout) clearTimeout(statusTimeout);
+  Pip.removeListener("knob1", onKnob);
+  Pip.removeListener("knob2", onPageKnob);
+};
+
+drawMenu();

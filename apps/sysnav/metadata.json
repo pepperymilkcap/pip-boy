@@ -1,0 +1,13 @@
+  {
+    "id": "sysnav",
+    "name": "System Navigator",
+    "version": "0.02",
+    "description": "View and navigate the Pip-Boy's file system",
+    "icon": "app.png",
+    "tags": "",
+    "type": "app",
+    "readme": "README.md",
+    "storage": [
+      { "name": "USER/sysnav.js", "url": "app.js" }
+    ]
+  }

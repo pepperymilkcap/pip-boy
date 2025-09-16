@@ -1,0 +1,12 @@
+{ "id": "nukatris",
+  "name": "Nukatris",
+  "version":"0.01",
+  "description": "A port of Tetris to the Pip-Boy, allows different UI centering. Derived from Clock-Tris, the Tetris port for Bangle.js smart watches",
+  "icon": "app.png",
+  "tags": "game",
+  "type": "app",
+  "readme": "README.md",
+  "storage": [
+    {"name":"USER/nukatris.js","url":"app.js"}
+  ]
+}
