@@ -1,0 +1,11 @@
+  { "id": "niftycc",
+  "name": "Nifty Clock Circle",
+  "version":"0.01",
+  "description": "A port of 'Nifty Series B Clock' by Filipe Fradique. Original version designed for Bangle.js smart watches",
+  "icon": "app.png",
+  "tags": "clock",
+  "type": "app",
+  "storage": [
+    {"name":"USER/niftycc.js","url":"app.js"}
+  ]
+  }

@@ -1,0 +1,116 @@
+.navbar {
+  background-color: #888888; /* Neutral gray */
+  padding: 0.5em 1em 0.5em 1em;
+}
+
+.navbar .navbar-brand {
+  color: #cccccc; /* Light gray */
+  font-weight: 400;
+}
+
+.avatar img {
+  border-radius: 5px;
+  background: #eeeeee; /* Very light gray */
+}
+
+#toastcontainer {
+  position: fixed;
+  bottom: 8px;
+  left: 0px;
+  right: 0px;
+  z-index: 100;
+}
+
+.hero {
+  padding-bottom: 1rem;
+  padding-top: 1rem;
+  text-align: center;
+}
+
+.chip {
+  cursor: pointer;
+}
+
+.filter-nav {
+  display: inline-block;
+}
+
+.sort-nav {
+  float: right;
+}
+
+.tile-content {
+  position: relative;
+}
+
+.link-github {
+  position: absolute;
+  top: 36px;
+  left: -24px;
+}
+
+.btn-favourite {
+  color: #999999; /* Medium gray */
+}
+
+.hidden {
+  display: none !important;
+}
+
+.tile {
+  border: 1px solid #bbbbbb; /* Light gray border */
+  box-shadow: 2px 2px 4px rgba(136, 136, 136, 0.1); /* Slight gray shadow */
+  margin: 3px;
+  padding: 10px;
+  width: 49%;
+}
+
+.panel-body, .panel {
+  padding-bottom: 10px;
+}
+
+body {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: large;
+  font-weight: 300;
+  color: #444444; /* Medium gray */
+  background-color: #f5f5f5; /* Very light gray */
+}
+
+p {
+  margin: 0 0 0.5rem;
+  font-weight: 300;
+  color: #555555; /* Slightly darker gray */
+}
+
+.tab {
+  letter-spacing: 0.015rem;
+}
+
+.tile-title {
+  font-size: 1.1rem;
+  letter-spacing: 0.01rem;
+  font-weight: 500;
+  color: #333333; /* Darker gray */
+}
+
+.small-text {
+  font-size: 0.8rem;
+  color: #666666; /* Medium gray */
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #222222; /* Darkest gray */
+}
+
+h2 {
+  font-size: 1.3rem;
+  color: #444444; /* Medium gray */
+}
+
+#connectmydevice {
+  font-size: 0.9rem;
+  color: #444444; /* Medium gray */
+}

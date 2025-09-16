@@ -1,0 +1,274 @@
+if (Pip.removeSubmenu) Pip.removeSubmenu();
+delete Pip.removeSubmenu;
+if (Pip.remove) Pip.remove();
+delete Pip.remove;
+
+var G = Graphics.createArrayBuffer(400, 308, 2, {
+  msb: true,
+  buffer: E.toArrayBuffer(E.memoryArea(0x10000000 + 16384, (400 * 308) >> 2))
+});
+G.flip = function() { return Pip.blitImage(G, 40, 7); };
+
+var wavFiles = [];
+var allFiles = [];
+var errorMsg = "";
+var playMsgLines = [];
+try {
+  allFiles = require("fs").readdirSync("/ALARM");
+  wavFiles = allFiles.filter(function(f) { return f.toLowerCase().endsWith(".wav"); });
+} catch (e) {
+  errorMsg = "ERROR: " + e;
+  wavFiles = [];
+}
+
+var selected = 0;
+var currentPage = 0;
+var isPlaying = false; // Flag to prevent playback interruptions
+var LEFT_MARGIN = 30;
+var HEADER_HEIGHT = 35;
+// UI raised by 10px
+var UNDERLINE_Y = HEADER_HEIGHT + 12;
+var LIST_START_Y = UNDERLINE_Y + 10;
+var LINE_HEIGHT = 30;
+var FILES_PER_PAGE = 6;
+var statusTimeout = null;
+
+function drawMenu() {
+  G.clear(0);
+  
+  // Draw header
+  G.setColor(1).setFontMonofonto28();
+  var headerText = "AUDIO PLAYER";
+  var headerWidth = G.stringWidth(headerText);
+  var headerX = Math.floor((G.getWidth() - headerWidth) / 2);
+  G.drawString(headerText, headerX, 15);
+  
+  // Draw underline lower
+  G.setColor(1).fillRect(LEFT_MARGIN, UNDERLINE_Y, G.getWidth() - LEFT_MARGIN, UNDERLINE_Y + 3);
+
+  var y = LIST_START_Y;
+  
+  G.setFontMonofonto23();
+  
+  if (!wavFiles.length) {
+    G.setColor(1);
+    var noFilesText = "NO WAV FILES FOUND";
+    var noFilesWidth = G.stringWidth(noFilesText);
+    var noFilesX = Math.floor((G.getWidth() - noFilesWidth) / 2);
+    G.drawString(noFilesText, noFilesX, G.getHeight() / 2);
+    G.setColor(1).drawRect(LEFT_MARGIN, G.getHeight() / 2 - 20, G.getWidth() - LEFT_MARGIN, G.getHeight() / 2 + 40);
+    G.flip();
+    return;
+  }
+
+  var totalPages = Math.ceil(wavFiles.length / FILES_PER_PAGE);
+  var startIndex = currentPage * FILES_PER_PAGE;
+  var endIndex = Math.min(startIndex + FILES_PER_PAGE, wavFiles.length);
+  var filesOnPage = wavFiles.slice(startIndex, endIndex);
+
+  // Adjust y for page info
+  var listDrawY = y;
+  if (totalPages > 1) {
+    G.setFontMonofonto16();
+    G.setColor(1);
+    var pageInfo = "PAGE " + (currentPage + 1) + "/" + totalPages;
+    var pageInfoWidth = G.stringWidth(pageInfo);
+    G.drawString(pageInfo, G.getWidth() - pageInfoWidth - LEFT_MARGIN, y);
+    listDrawY += 25; // Add space for page info
+  }
+  
+  G.setFontMonofonto23();
+
+  filesOnPage.forEach(function(name, i) {
+    var actualIndex = startIndex + i;
+    var rowY = listDrawY + i * LINE_HEIGHT;
+    
+    if (actualIndex === selected) {
+      // Symmetrical selection box
+      var boxPadding = (LINE_HEIGHT - 23) / 2; // Font height is 23
+      var boxTop = rowY - boxPadding;
+      var boxHeight = LINE_HEIGHT;
+      G.setColor(1).fillRect(LEFT_MARGIN - 5, boxTop, G.getWidth() - LEFT_MARGIN + 5, boxTop + boxHeight);
+      G.setColor(0).fillRect(LEFT_MARGIN - 3, boxTop + 2, G.getWidth() - LEFT_MARGIN + 3, boxTop + boxHeight - 2);
+      G.setColor(1);
+    } else {
+      G.setColor(1);
+    }
+    var displayName = name;
+    if (G.stringWidth(displayName) > G.getWidth() - LEFT_MARGIN - 40) {
+      while (G.stringWidth(displayName + "...") > G.getWidth() - LEFT_MARGIN - 40 && displayName.length > 0) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += "...";
+    }
+    G.drawString(displayName, LEFT_MARGIN, rowY);
+  });
+
+  // Status dialog
+  if (playMsgLines.length) {
+    var boxWidth = 360;
+    var boxHeight = 20 * Math.min(6, playMsgLines.length) + 30;
+    var boxX = Math.floor((G.getWidth() - boxWidth) / 2);
+    var boxY = Math.floor((G.getHeight() - boxHeight) / 2);
+
+    G.setColor(1).fillRect(boxX - 3, boxY - 3, boxX + boxWidth + 3, boxY + boxHeight + 3);
+    G.setColor(0).fillRect(boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+
+    var hasSuccess = playMsgLines.some(function(line) { return line.includes("SUCCESS"); });
+    var hasError = playMsgLines.some(function(line) { return line.includes("FAILED") || line.includes("WARNING"); });
+
+    if (hasSuccess) {
+      G.setColor(1).drawRect(boxX + 2, boxY + 2, boxX + boxWidth - 2, boxY + boxHeight - 2);
+    } else if (hasError) {
+      for (var i = 0; i < boxWidth - 4; i += 8) {
+        G.setColor(1).fillRect(boxX + 2 + i, boxY + 2, boxX + 6 + i, boxY + 4);
+        G.setColor(1).fillRect(boxX + 2 + i, boxY + boxHeight - 4, boxX + 6 + i, boxY + boxHeight - 2);
+      }
+    }
+
+    G.setFontMonofonto16();
+    G.setColor(1);
+    for (var j = 0; j < Math.min(6, playMsgLines.length); j++) {
+      var line = playMsgLines[j];
+      var textWidth = G.stringWidth(line);
+      var lineX = boxX + Math.floor((boxWidth - textWidth) / 2);
+      var lineY = boxY + 20 + j * 20;
+      G.drawString(line, lineX, lineY);
+    }
+  }
+  
+  G.flip();
+}
+
+function onKnob(dir) {
+  if (!wavFiles.length || isPlaying) return;
+  var newSelected = Math.max(0, Math.min(wavFiles.length - 1, selected - dir));
+  var newSelectedPage = Math.floor(newSelected / FILES_PER_PAGE);
+  if (newSelectedPage !== currentPage) {
+    currentPage = newSelectedPage;
+  }
+  selected = newSelected;
+  needsRedraw = true;
+}
+Pip.on("knob1", onKnob);
+
+function onPageKnob(dir) {
+  if (!wavFiles.length || isPlaying) return;
+  var totalPages = Math.ceil(wavFiles.length / FILES_PER_PAGE);
+  var newPage = Math.max(0, Math.min(totalPages - 1, currentPage - dir));
+  if (newPage !== currentPage) {
+    currentPage = newPage;
+    var pageStart = currentPage * FILES_PER_PAGE;
+    var pageEnd = Math.min(pageStart + FILES_PER_PAGE - 1, wavFiles.length - 1);
+    if (selected < pageStart || selected > pageEnd) {
+      selected = pageStart;
+    }
+    needsRedraw = true;
+  }
+}
+Pip.on("knob2", onPageKnob);
+
+var lastBtnState = false;
+var debounceFrames = 5;
+var debounceCounter = 0;
+var needsRedraw = true;
+
+function frameLoop() {
+  var btnState = typeof KNOB1_BTN !== "undefined" && KNOB1_BTN.read();
+
+  if (debounceCounter < debounceFrames) {
+    debounceCounter++;
+  } else {
+    if (btnState && !lastBtnState) {
+      playSelected();
+      needsRedraw = true;
+    }
+  }
+  lastBtnState = btnState;
+
+  if (needsRedraw) {
+    drawMenu();
+    needsRedraw = false;
+  }
+}
+var frameInterval = setInterval(frameLoop, 100);
+
+function playSelected() {
+  if (!wavFiles.length || isPlaying) return;
+  isPlaying = true;
+  
+  try {
+    Pip.audioStop();
+  } catch(e) {
+    // Ignore error if audio was not playing
+  }
+
+  var filename = wavFiles[selected];
+  var fullPath = "/ALARM/" + filename;
+  var results = [];
+  
+  results.push("PLAYING: " + filename.toUpperCase());
+
+  var audioPlayed = false;
+
+  if (!audioPlayed) {
+    try {
+      Pip.audioStart(fullPath);
+      results.push("SUCCESS: PLAYBACK STARTED");
+      audioPlayed = true;
+    } catch (e) {
+      results.push("FAILED: METHOD 1");
+    }
+  }
+
+  if (!audioPlayed) {
+    try {
+      Pip.audioStartVar(fullPath);
+      results.push("SUCCESS: PLAYBACK STARTED");
+      audioPlayed = true;
+    } catch (e) {
+      results.push("FAILED: METHOD 2");
+    }
+  }
+
+  if (!audioPlayed) {
+    try {
+      var wavBuffer = require("fs").readFileSync(fullPath);
+      if (wavBuffer && wavBuffer.length) {
+        Pip.audioStartVar(wavBuffer);
+        results.push("SUCCESS: PLAYBACK STARTED");
+        audioPlayed = true;
+      } else {
+        results.push("FAILED: FILE READ");
+      }
+    } catch (e) {
+      results.push("FAILED: METHOD 3");
+    }
+  }
+
+  if (!audioPlayed) {
+    results.push("WARNING: UNABLE TO PLAY FILE");
+    results.push("CHECK FILE FORMAT");
+  }
+
+  playMsgLines = results;
+  drawMenu();
+  if (statusTimeout) clearTimeout(statusTimeout);
+  statusTimeout = setTimeout(function() {
+    playMsgLines = [];
+    isPlaying = false; // Allow new playback
+    needsRedraw = true;
+  }, 4000);
+}
+
+Pip.remove = function () {
+  clearInterval(frameInterval);
+  if (statusTimeout) clearTimeout(statusTimeout);
+  Pip.removeListener("knob1", onKnob);
+  Pip.removeListener("knob2", onPageKnob);
+  try {
+    Pip.audioStop(); // Ensure audio is stopped on exit
+  } catch(e) {;} // Add semicolon to ensure block is not empty
+};
+
+drawMenu();
