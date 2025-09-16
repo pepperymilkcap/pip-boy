@@ -9,8 +9,8 @@ const DEFAULTSETTINGS = {
   favourites : ["launch"],
   language : "",
   bleCompat: false, // 20 byte MTU BLE Compatibility mode
-  sendUsageStats: true,  // send usage stats to banglejs.com
-  alwaysAllowUpdate : false, //  Always show "reinstall app" buttonregardless of the version
+  sendUsageStats: false,  // send usage stats to banglejs.com
+  alwaysAllowUpdate : true, //  Always show "reinstall app" buttonregardless of the version
   autoReload: false, //  Automatically reload watch after app App Loader actions (removes "Hold button" prompt)
   noPackets: false,  // Enable File Upload Compatibility mode (disables binary packet upload)
 };
@@ -1345,12 +1345,6 @@ if (btn) btn.addEventListener("click", event => {
 // Screenshot button
 btn = document.getElementById("screenshot");
 if (btn) btn.addEventListener("click",event=>{
-  // Check if device is connected first
-  if (!Comms.isConnected()) {
-    showPrompt("Screenshot","Please connect to a device before taking a screenshot",{ok:1});
-    return;
-  }
-  
   getInstalledApps(false).then(()=>{
     if (device.id=="BANGLEJS"){
       showPrompt("Screenshot","Screenshots are not supported on Bangle.js 1",{ok:1});
@@ -1377,38 +1371,38 @@ if (btn) btn.addEventListener("click",event=>{
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
-        Progress.show({title:"Converting screenshot",percent:90,sticky:true});
-        
-        // Convert raw Espruino image data to data URL
-        let imageData = s.split("\n")[0];
-        url = imageconverter.stringToImageURL(imageData);
-        
-        if (!url) {
-          showToast("Error: Unable to convert screenshot data", "error");
-          Progress.hide({sticky:true});
-          return;
+        let oImage = new Image();
+        oImage.onload = function(){
+          Progress.show({title:"Converting screenshot",percent:90,sticky:true});
+          let oCanvas = document.createElement('canvas');
+          oCanvas.width = oImage.width;
+          oCanvas.height = oImage.height;
+          let oCtx = oCanvas.getContext('2d');
+          oCtx.drawImage(oImage, 0, 0);
+          url = oCanvas.toDataURL();
+
+          let screenshotHtml = `
+            <div style="text-align: center;">
+              <img align="center" src="${url}"></img>
+            </div>
+          `
+
+          showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
+            Progress.show({title:"Saving screenshot",percent:99,sticky:true});
+            let link = document.createElement("a");
+            link.download = "screenshot.png";
+            link.target = "_blank";
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }).catch(()=>{
+          }).finally(()=>{
+            Progress.hide({sticky:true});
+          });
         }
-
-        let screenshotHtml = `
-          <div style="text-align: center;">
-            <img align="center" src="${url}"></img>
-          </div>
-        `
-
-        showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
-          Progress.show({title:"Saving screenshot",percent:99,sticky:true});
-          let link = document.createElement("a");
-          link.download = "screenshot.png";
-          link.target = "_blank";
-          link.href = url;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }).catch(()=>{
-        }).finally(()=>{
-          Progress.hide({sticky:true});
-        });
-        
+        oImage.src = s.split("\n")[0];
+        Progress.hide({sticky:true});
         Progress.show({title:"Screenshot done",percent:85,sticky:true});
 
       }, err=>{
@@ -1418,12 +1412,8 @@ if (btn) btn.addEventListener("click",event=>{
         commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
         showToast("Error creating screenshot: "+err,"error");
-        Progress.hide({sticky:true});
       });
     }
-  }).catch(err=>{
-    showToast("Error getting device info: "+err,"error");
-    Progress.hide({sticky:true});
   });
 });
 
