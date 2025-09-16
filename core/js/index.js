@@ -1362,9 +1362,9 @@ if (btn) btn.addEventListener("click",event=>{
       };
       
       // Set tripled timeouts for screenshot (3x default values)
-      commsLib.timeoutNormal = 900; // 3 * 300ms
-      commsLib.timeoutNewline = 50000; // 3 * 16667ms (increased from 45s to 50s based on Espruino IDE timing information)
-      commsLib.timeoutMax = 90000; // 3 * 30000ms
+      commsLib.timeoutNormal = 40000; 
+      commsLib.timeoutNewline = 45000; 
+      commsLib.timeoutMax = 45000;
       
       Comms.write("\x10g.dump();\n").then((s)=>{
         // Restore original timeout settings
