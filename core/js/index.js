@@ -1,3 +1,4 @@
+
 let appJSON = []; // List of apps and info from apps.json
 let appSortInfo = {}; // list of data to sort by, from appdates.csv { created, modified }
 let appCounts = {};
@@ -1352,15 +1353,83 @@ if (btn) btn.addEventListener("click",event=>{
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
       
-      // Use the new prompt-based termination detection instead of timeout-based approach
-      // g.dump() sends data in chunks with unpredictable pauses, but always ends with the '>' prompt
-      console.log("Starting screenshot capture using Espruino prompt detection (waiting for '>')");
+      // Save current timeout settings and set tripled timeouts for screenshot
+      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
+      let originalTimeouts = {
+        timeoutNormal: commsLib.timeoutNormal,
+        timeoutNewline: commsLib.timeoutNewline,
+        timeoutMax: commsLib.timeoutMax
+      };
       
-      Comms.writeUntilTerminator("\x10g.dump();\n", {
-        terminator: '>',
-        maxWaitTime: 300000 // 5 minutes as safety timeout
-      }).then((s)=>{
-        console.log("Screenshot data received via prompt detection, length: " + s.length + " characters");
+      // Set extended timeouts for screenshot to handle large data streams with potential pauses
+      // g.dump() can send data in chunks with significant pauses between chunks
+      commsLib.timeoutNormal = 15000; // 15 seconds after last data received (increased from 5s)
+      commsLib.timeoutNewline = 60000; // 60 seconds total for newline-based wait (not used)
+      commsLib.timeoutMax = 300000; // 5 minutes maximum total time (increased from 3m)
+      
+      // Use waitNewLine: false to avoid timing out on long continuous data streams
+      // g.dump() outputs the complete image data as one continuous stream without intermediate newlines
+      console.log("Starting screenshot capture with extended timeouts: normal=" + commsLib.timeoutNormal + "ms, max=" + commsLib.timeoutMax + "ms");
+      
+      // Function to capture screenshot with retry logic
+      function captureScreenshotWithRetry(maxRetries = 3, currentRetry = 0) {
+        console.log("Screenshot attempt " + (currentRetry + 1) + " of " + maxRetries);
+        
+        return Comms.write("\x10g.dump();\n", {waitNewLine: false}).then((s) => {
+          console.log("Screenshot data received, length: " + s.length + " characters");
+          
+          // Try to extract and validate the image data
+          let imageDataUrl = "";
+          let lines = s.split("\n");
+          
+          // Look for the data URL in the response - it should start with "data:image/"
+          for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('data:image/')) {
+              imageDataUrl = line;
+              break;
+            }
+          }
+          
+          // If no data URL found in lines, the whole response might be the data URL
+          if (!imageDataUrl && s.trim().startsWith('data:image/')) {
+            imageDataUrl = s.trim();
+          }
+          
+          // Validate if we have a reasonable looking data URL
+          if (imageDataUrl && imageDataUrl.includes('base64,')) {
+            let base64Part = imageDataUrl.split('base64,')[1];
+            if (base64Part && base64Part.length > 1000) {
+              let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
+              if (cleanBase64.length > 5000) { // Reasonable minimum size for a screenshot
+                console.log("Screenshot appears complete on attempt " + (currentRetry + 1));
+                return s; // Return the successful result
+              }
+            }
+          }
+          
+          // If we get here, the data appears incomplete
+          console.warn("Screenshot data appears incomplete on attempt " + (currentRetry + 1) + 
+                      ", received " + (imageDataUrl ? "data URL with " + (imageDataUrl.split('base64,')[1]?.length || 0) + " base64 chars" : "no valid data URL"));
+          
+          if (currentRetry < maxRetries - 1) {
+            // Wait a bit and retry
+            console.log("Retrying screenshot capture in 2 seconds...");
+            return new Promise(resolve => setTimeout(resolve, 2000))
+              .then(() => captureScreenshotWithRetry(maxRetries, currentRetry + 1));
+          } else {
+            // All retries exhausted, return what we have
+            console.error("All screenshot retry attempts exhausted, proceeding with possibly incomplete data");
+            return s;
+          }
+        });
+      }
+      
+      captureScreenshotWithRetry().then((s)=>{
+        // Restore original timeout settings
+        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+        commsLib.timeoutMax = originalTimeouts.timeoutMax;
         
         // Extract the image data URL from the response
         // g.dump() may return response with echo, command, and data - find the data URL
@@ -1381,21 +1450,39 @@ if (btn) btn.addEventListener("click",event=>{
           imageDataUrl = s.trim();
         }
         
-        // Validate that we have a data URL (should be complete with prompt-based detection)
+        // Validate that we have a complete data URL
         if (!imageDataUrl || !imageDataUrl.startsWith('data:image/')) {
-          throw new Error("Invalid image data received. Response: " + s.substring(0, 200) + "...");
+          throw new Error("Invalid or incomplete image data received. Response: " + s.substring(0, 200) + "...");
         }
         
-        // Basic validation for base64 data URLs
+        // For base64 data URLs, ensure the string length suggests complete transmission
         if (imageDataUrl.includes('base64,')) {
           let base64Part = imageDataUrl.split('base64,')[1];
           if (!base64Part || base64Part.length < 100) {
             throw new Error("Image data appears incomplete - base64 data too short: " + base64Part?.length + " chars");
           }
           
-          // Log success for debugging
+          // Check if base64 data ends properly (should be complete base64)
+          // Base64 strings should have length divisible by 4 when padding is included
           let cleanBase64 = base64Part.replace(/[^A-Za-z0-9+/=]/g, '');
-          console.log("Screenshot data received successfully using prompt detection: " + cleanBase64.length + " base64 characters");
+          if (cleanBase64.length < 1000) { // Minimum expected size for a reasonable screenshot
+            throw new Error("Image data appears incomplete - insufficient data length: " + cleanBase64.length + " chars");
+          }
+          
+          // Additional validation: check if base64 ends with proper padding or is properly formed
+          if (cleanBase64.length % 4 !== 0 && !cleanBase64.endsWith('=') && !cleanBase64.endsWith('==')) {
+            console.warn("Warning: Base64 data may be incomplete - not properly padded. Length: " + cleanBase64.length);
+            // Don't throw error yet, as some valid base64 might not need padding
+          }
+          
+          // Check if the data URL appears to be cut off in the middle
+          let lastChars = imageDataUrl.slice(-20); // Get last 20 characters
+          if (lastChars.includes('\n') || lastChars.includes(' ') || lastChars.includes('\t')) {
+            console.warn("Warning: Image data URL appears to end with whitespace, may be incomplete");
+          }
+          
+          // Log success for debugging
+          console.log("Screenshot data received successfully: " + cleanBase64.length + " base64 characters");
         }
         
         Progress.show({title:"Screenshot captured, loading image...",percent:88,sticky:true});
