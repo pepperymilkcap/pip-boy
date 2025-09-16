@@ -1,7 +1,7 @@
 # Pip-Boy Third-Party Program Repository
 
 A tool to add apps and upload files to your Pip-Boy. Contains third-party apps and Bangle.js app ports.
-
+This version is a bit of a spaghetti-code mess and is frankensteined together to achieve a result.
 
 ## Writing apps
 
