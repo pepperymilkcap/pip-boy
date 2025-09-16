@@ -1352,7 +1352,7 @@ if (btn) btn.addEventListener("click",event=>{
       let url;
       Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
       
-      // Save current timeout settings and set unlimited timeouts for screenshot
+      // Save current timeout settings and set tripled timeouts for screenshot
       let commsLib = (typeof UART !== "undefined") ? UART : Puck;
       let originalTimeouts = {
         timeoutNormal: commsLib.timeoutNormal,
@@ -1360,12 +1360,12 @@ if (btn) btn.addEventListener("click",event=>{
         timeoutMax: commsLib.timeoutMax
       };
       
-      // Set unlimited timeouts for screenshot (very high values)
-      commsLib.timeoutNormal = 300000; // 5 minutes
-      commsLib.timeoutNewline = 600000; // 10 minutes
-      commsLib.timeoutMax = 600000; // 10 minutes
+      // Set tripled timeouts for screenshot (3x default values)
+      commsLib.timeoutNormal = 900; // 3 * 300ms
+      commsLib.timeoutNewline = 30000; // 3 * 10000ms
+      commsLib.timeoutMax = 90000; // 3 * 30000ms
       
-      Comms.write("\x10g.dump(0, 0, 480, 320);\n").then((s)=>{
+      Comms.write("\x10g.dump();\n").then((s)=>{
         // Restore original timeout settings
         commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
         commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
@@ -1396,9 +1396,8 @@ if (btn) btn.addEventListener("click",event=>{
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-          }).catch(()=>{
-          }).finally(()=>{
-            Progress.hide({sticky:true});
+          }).catch(() => {
+            Progress.hide({sticky:true}); // cancelled
           });
         }
         oImage.src = s.split("\n")[0];
