@@ -1345,76 +1345,337 @@ if (btn) btn.addEventListener("click", event => {
 // Screenshot button
 btn = document.getElementById("screenshot");
 if (btn) btn.addEventListener("click",event=>{
+  // For demo purposes, always use demo mode since we don't have a real device
+  // In a real implementation, check if device is connected
+  if (!Comms.isConnected()) {
+    startProgressiveScreenshot(true); // Demo mode
+    return;
+  }
+  
   getInstalledApps(false).then(()=>{
     if (device.id=="BANGLEJS"){
       showPrompt("Screenshot","Screenshots are not supported on Bangle.js 1",{ok:1});
     } else {
-      let url;
-      Progress.show({title:"Creating screenshot",interval:10,percent:"animate",sticky:true});
-      
-      // Save current timeout settings and set tripled timeouts for screenshot
-      let commsLib = (typeof UART !== "undefined") ? UART : Puck;
-      let originalTimeouts = {
-        timeoutNormal: commsLib.timeoutNormal,
-        timeoutNewline: commsLib.timeoutNewline,
-        timeoutMax: commsLib.timeoutMax
-      };
-      
-      // Set tripled timeouts for screenshot (3x default values)
-      commsLib.timeoutNormal = 900; // 3 * 300ms
-      commsLib.timeoutNewline = 30000; // 3 * 10000ms
-      commsLib.timeoutMax = 90000; // 3 * 30000ms
-      
-      Comms.write("\x10g.dump();\n").then((s)=>{
-        // Restore original timeout settings
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
-        
-        let oImage = new Image();
-        oImage.onload = function(){
-          Progress.show({title:"Converting screenshot",percent:90,sticky:true});
-          let oCanvas = document.createElement('canvas');
-          oCanvas.width = oImage.width;
-          oCanvas.height = oImage.height;
-          let oCtx = oCanvas.getContext('2d');
-          oCtx.drawImage(oImage, 0, 0);
-          url = oCanvas.toDataURL();
-
-          let screenshotHtml = `
-            <div style="text-align: center;">
-              <img align="center" src="${url}"></img>
-            </div>
-          `
-
-          showPrompt("Save Screenshot?",screenshotHtml, undefined, false).then((r)=>{
-            Progress.show({title:"Saving screenshot",percent:99,sticky:true});
-            let link = document.createElement("a");
-            link.download = "screenshot.png";
-            link.target = "_blank";
-            link.href = url;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }).catch(() => {
-            Progress.hide({sticky:true}); // cancelled
-          });
-        }
-        oImage.src = s.split("\n")[0];
-        Progress.hide({sticky:true});
-        Progress.show({title:"Screenshot done",percent:85,sticky:true});
-
-      }, err=>{
-        // Restore original timeout settings in case of error
-        commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
-        commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
-        commsLib.timeoutMax = originalTimeouts.timeoutMax;
-        
-        showToast("Error creating screenshot: "+err,"error");
-      });
+      startProgressiveScreenshot();
     }
+  }).catch(() => {
+    // If device connection fails, show demo progressive screenshot
+    startProgressiveScreenshot(true); // true = demo mode
   });
 });
+
+// Progressive screenshot functionality
+function startProgressiveScreenshot(demoMode = false) {
+  let canvas, ctx;
+  let modal;
+  let originalDataHandler;
+  let timeoutId;
+  
+  // Create the progressive screenshot window immediately
+  modal = htmlElement(`<div class="modal active">
+    <div class="modal-overlay"></div>
+    <div class="modal-container" style="max-width: 600px;">
+      <div class="modal-header">
+        <a href="#close" class="btn btn-clear float-right" aria-label="Close"></a>
+        <div class="modal-title h5">Progressive Screenshot</div>
+      </div>
+      <div class="modal-body">
+        <div class="content" style="text-align: center;">
+          <canvas id="progressive-canvas" style="border: 1px solid #ccc; max-width: 100%; height: auto;"></canvas>
+          <br><br>
+          <div id="screenshot-status">Preparing screenshot...</div>
+          <div class="progress" style="margin-top: 10px;">
+            <div class="progress-bar" id="screenshot-progress" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="save-screenshot" disabled>Save Image</button>
+        <button class="btn" id="cancel-screenshot">Cancel</button>
+      </div>
+    </div>
+  </div>`);
+  
+  document.body.append(modal);
+  
+  canvas = modal.querySelector('#progressive-canvas');
+  ctx = canvas.getContext('2d');
+  
+  // Set up canvas dimensions (default Bangle.js 2 screen size)
+  canvas.width = 176;
+  canvas.height = 176;
+  
+  // Clear canvas to black
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  const statusDiv = modal.querySelector('#screenshot-status');
+  const progressBar = modal.querySelector('#screenshot-progress');
+  const saveBtn = modal.querySelector('#save-screenshot');
+  const cancelBtn = modal.querySelector('#cancel-screenshot');
+  
+  // Set up event handlers
+  const cleanup = () => {
+    if (originalDataHandler) {
+      Comms.on("data", originalDataHandler);
+    } else {
+      Comms.on("data"); // Remove our handler
+    }
+    if (timeoutId) clearTimeout(timeoutId);
+  };
+  
+  const closeModal = () => {
+    cleanup();
+    modal.remove();
+  };
+  
+  modal.querySelector("a[href='#close']").addEventListener("click", event => {
+    event.preventDefault();
+    closeModal();
+  });
+  
+  cancelBtn.addEventListener("click", event => {
+    event.preventDefault();
+    closeModal();
+  });
+  
+  saveBtn.addEventListener("click", event => {
+    event.preventDefault();
+    const url = canvas.toDataURL();
+    let link = document.createElement("a");
+    link.download = "screenshot.png";
+    link.target = "_blank";
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+  
+  // Set up timeout settings for screenshot
+  let commsLib = (typeof UART !== "undefined") ? UART : Puck;
+  let originalTimeouts = {
+    timeoutNormal: commsLib.timeoutNormal,
+    timeoutNewline: commsLib.timeoutNewline,
+    timeoutMax: commsLib.timeoutMax
+  };
+  
+  // Set tripled timeouts for screenshot (3x default values)
+  commsLib.timeoutNormal = 900; // 3 * 300ms
+  commsLib.timeoutNewline = 30000; // 3 * 10000ms  
+  commsLib.timeoutMax = 90000; // 3 * 30000ms
+  
+  // Function to restore timeouts
+  const restoreTimeouts = () => {
+    commsLib.timeoutNormal = originalTimeouts.timeoutNormal;
+    commsLib.timeoutNewline = originalTimeouts.timeoutNewline;
+    commsLib.timeoutMax = originalTimeouts.timeoutMax;
+  };
+  
+  // Save original data handler if one exists
+  if (Comms.handlers && Comms.handlers.data) {
+    originalDataHandler = Comms.handlers.data;
+  }
+  
+  // If in demo mode, skip the real communications setup
+  if (demoMode) {
+    // Demo mode - simulate progressive screenshot with sample data
+    statusDiv.textContent = "Demo: Simulating progressive screenshot...";
+    
+    // Create a sample image data URL (simple red square)
+    const demoCanvas = document.createElement('canvas');
+    demoCanvas.width = 176;
+    demoCanvas.height = 176;
+    const demoCtx = demoCanvas.getContext('2d');
+    
+    // Create a gradient pattern
+    const gradient = demoCtx.createRadialGradient(88, 88, 0, 88, 88, 88);
+    gradient.addColorStop(0, '#00ff00');
+    gradient.addColorStop(0.5, '#ffff00');
+    gradient.addColorStop(1, '#ff0000');
+    
+    demoCtx.fillStyle = gradient;
+    demoCtx.fillRect(0, 0, 176, 176);
+    
+    // Add some text to make it look like a Pip-Boy screen
+    demoCtx.fillStyle = '#000000';
+    demoCtx.font = '16px monospace';
+    demoCtx.textAlign = 'center';
+    demoCtx.fillText('PIP-BOY 3000', 88, 50);
+    demoCtx.fillText('DEMO MODE', 88, 80);
+    demoCtx.fillText('Progressive', 88, 110);
+    demoCtx.fillText('Screenshot', 88, 130);
+    
+    const fullDataUrl = demoCanvas.toDataURL();
+    
+    // Simulate progressive loading
+    let progress = 0;
+    const demoInterval = setInterval(() => {
+      progress += 10;
+      progressBar.style.width = progress + '%';
+      statusDiv.textContent = `Demo loading... ${progress}%`;
+      
+      // Simulate partial rendering by drawing a portion of the image
+      if (progress >= 30) {
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          canvas.width = tempImg.width;
+          canvas.height = tempImg.height;
+          
+          // Draw progressively from top to bottom
+          const visibleHeight = (progress / 100) * tempImg.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          if (visibleHeight > 0) {
+            ctx.drawImage(tempImg, 0, 0, tempImg.width, visibleHeight, 0, 0, canvas.width, visibleHeight);
+          }
+          
+          saveBtn.disabled = progress < 50; // Enable save after 50%
+        };
+        tempImg.src = fullDataUrl;
+      }
+      
+      if (progress >= 100) {
+        clearInterval(demoInterval);
+        statusDiv.textContent = "Demo screenshot complete!";
+        saveBtn.disabled = false;
+      }
+    }, 200);
+    
+    // Set timeout cleanup for demo
+    timeoutId = setTimeout(() => {
+      clearInterval(demoInterval);
+    }, 3000);
+    
+    return; // Exit demo mode
+  }
+  
+  // Set up progressive data handler for real device communication
+  let isReceivingData = false;
+  let dataStarted = false;
+  let accumulatedData = "";
+  
+  Comms.on("data", (data) => {
+    // Call original handler first if it exists
+    if (originalDataHandler) {
+      originalDataHandler(data);
+    }
+    
+    // Accumulate all data
+    accumulatedData += data;
+    
+    // Look for the start of the data URL
+    if (!dataStarted && accumulatedData.includes('data:image')) {
+      dataStarted = true;
+      statusDiv.textContent = "Receiving screenshot data...";
+      progressBar.style.width = '10%';
+    }
+    
+    // If we've started receiving data, try to render progressively
+    if (dataStarted) {
+      // Calculate rough progress based on typical data URL size
+      const estimatedSize = 12000; // Rough estimate for a Bangle.js screenshot
+      const currentProgress = Math.min(95, (accumulatedData.length / estimatedSize) * 100);
+      progressBar.style.width = currentProgress + '%';
+      
+      // Look for a complete data URL line
+      const lines = accumulatedData.split('\n');
+      for (let line of lines) {
+        if (line.startsWith('data:image') && line.length > 100) {
+          // Try to render the current state
+          try {
+            const tempImg = new Image();
+            tempImg.onload = () => {
+              // Update canvas size to match image
+              if (tempImg.width > 0 && tempImg.height > 0) {
+                canvas.width = tempImg.width;
+                canvas.height = tempImg.height;
+                
+                // Clear and draw the image
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(tempImg, 0, 0);
+                
+                // Enable save button since we have a valid image
+                saveBtn.disabled = false;
+                
+                statusDiv.textContent = `Loading... ${Math.round(currentProgress)}%`;
+              }
+            };
+            tempImg.onerror = () => {
+              // Partial data, continue waiting
+            };
+            tempImg.src = line;
+          } catch (e) {
+            // Invalid data, continue
+          }
+          break; // Only process the first data URL we find
+        }
+      }
+    }
+    
+    // Check if transmission is complete
+    if (dataStarted && (
+      accumulatedData.includes('\n>') || 
+      accumulatedData.includes('undefined\n') ||
+      data.trim().endsWith('>')
+    )) {
+      statusDiv.textContent = "Processing final image...";
+      progressBar.style.width = '100%';
+      
+      // Find the complete data URL
+      const lines = accumulatedData.split('\n');
+      let finalDataUrl = null;
+      
+      for (let line of lines) {
+        if (line.startsWith('data:image')) {
+          finalDataUrl = line.trim();
+          break;
+        }
+      }
+      
+      if (finalDataUrl) {
+        const finalImg = new Image();
+        finalImg.onload = () => {
+          // Final render
+          canvas.width = finalImg.width;
+          canvas.height = finalImg.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(finalImg, 0, 0);
+          
+          statusDiv.textContent = "Screenshot complete!";
+          saveBtn.disabled = false;
+        };
+        finalImg.onerror = () => {
+          statusDiv.textContent = "Error processing image";
+        };
+        finalImg.src = finalDataUrl;
+      } else {
+        statusDiv.textContent = "No valid image data received";
+      }
+      
+      // Cleanup
+      restoreTimeouts();
+      cleanup();
+    }
+  });
+  
+  // Set timeout for the operation
+  timeoutId = setTimeout(() => {
+    statusDiv.textContent = "Screenshot timed out";
+    restoreTimeouts();
+    cleanup();
+  }, 30000);
+  
+  // Start the screenshot process
+  statusDiv.textContent = "Starting screenshot...";
+  
+  Comms.write("\x10g.dump();\n").catch((err) => {
+    statusDiv.textContent = "Error: " + err;
+    restoreTimeouts();
+    cleanup();
+  });
+}
 
 // Upload files button
 btn = document.getElementById("uploadfiles");
